@@ -347,6 +347,10 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+.notify-action {
+  white-space: nowrap;
+}
+
 .text-button {
   min-height: 34px;
   background: transparent;

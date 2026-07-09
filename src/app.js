@@ -11,7 +11,8 @@ const STORAGE = {
   profile: "nsp.profile",
   devices: "nsp.devices",
   requests: "nsp.requests",
-  firebaseAuth: "nsp.firebaseAuth"
+  firebaseAuth: "nsp.firebaseAuth",
+  notifiedRequests: "nsp.notifiedRequests"
 };
 
 const CHANNEL_LABELS = {
@@ -64,7 +65,8 @@ let state = {
   profile: load(STORAGE.profile, null),
   devices: load(STORAGE.devices, []),
   requests: load(STORAGE.requests, []),
-  firebaseAuth: load(STORAGE.firebaseAuth, null)
+  firebaseAuth: load(STORAGE.firebaseAuth, null),
+  notifiedRequests: load(STORAGE.notifiedRequests, {})
 };
 
 const firebaseRuntime = {
@@ -72,10 +74,20 @@ const firebaseRuntime = {
   configured: false,
   reason: "loading",
   saveTimer: null,
-  pushing: false
+  pushing: false,
+  syncing: false,
+  pollTimer: null
 };
 
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("nsp-sync") : null;
+const launchParams = new URLSearchParams(window.location.search);
+const launchIntent = {
+  view: launchParams.get("view"),
+  requestId: launchParams.get("request"),
+  handoff: launchParams.get("handoff") === "1",
+  focused: false,
+  handoffStarted: false
+};
 
 function load(key, fallback) {
   try {
@@ -92,6 +104,7 @@ function save(options = {}) {
   localStorage.setItem(STORAGE.profile, JSON.stringify(state.profile));
   localStorage.setItem(STORAGE.devices, JSON.stringify(state.devices));
   localStorage.setItem(STORAGE.requests, JSON.stringify(state.requests));
+  localStorage.setItem(STORAGE.notifiedRequests, JSON.stringify(state.notifiedRequests));
 
   if (state.firebaseAuth) {
     localStorage.setItem(STORAGE.firebaseAuth, JSON.stringify(state.firebaseAuth));
@@ -288,7 +301,7 @@ function renderRequests() {
     const links = buildLinks(request);
 
     return `
-      <article class="request-card ${request.status === "sent_by_user" ? "done" : ""}">
+      <article class="request-card ${request.status === "sent_by_user" ? "done" : ""}" data-request-card="${escapeHtml(request.id)}">
         <div>
           <div class="request-meta">
             <span class="tag ready">${escapeHtml(CHANNEL_LABELS[request.channel])}</span>
@@ -315,11 +328,12 @@ function buildLinks(request) {
   const message = encodeURIComponent(request.message);
   const phoneForWhatsapp = request.recipient.replace(/[^\d]/g, "");
   const phoneForSms = request.recipient.replace(/[^\d+.-]/g, "");
+  const smsBodySeparator = phoneForSms && detectPlatform() === "ios" ? "&" : "?";
 
   return {
     whatsapp: phoneForWhatsapp ? `https://wa.me/${phoneForWhatsapp}?text=${message}` : `https://wa.me/?text=${message}`,
     viber: `viber://forward?text=${message}`,
-    sms: `sms:${phoneForSms}`
+    sms: `sms:${phoneForSms}${message ? `${smsBodySeparator}body=${message}` : ""}`
   };
 }
 
@@ -466,7 +480,9 @@ async function handleAuthSubmit(event) {
     selectors.authPassword.value = "";
     save({ remote: false });
     render();
-    await syncCloudState();
+    await syncCloudState({ notify: true, push: true });
+    startRequestWatcher();
+    focusRequestedView();
     toast(action === "create" ? "Account created" : "Signed in");
   } catch (error) {
     setCloudStatus("Cloud auth failed", "warn");
@@ -481,9 +497,12 @@ function handleSignOut() {
 }
 
 function clearSession() {
+  stopRequestWatcher();
+  window.clearTimeout(firebaseRuntime.saveTimer);
   state.firebaseAuth = null;
   state.devices = [];
   state.requests = [];
+  state.notifiedRequests = {};
   save({ remote: false });
 }
 
@@ -540,7 +559,6 @@ function handleRequestSubmit(event) {
   selectors.channel.value = request.channel;
   save();
   render();
-  showLocalNotification(request);
   toast("Request created");
 }
 
@@ -586,15 +604,34 @@ async function handleRequestListClick(event) {
   }
 
   if (openElement) {
+    event.preventDefault();
     const request = state.requests.find((item) => item.id === openElement.dataset.openRequest);
     if (!request) return;
 
-    if (openElement.dataset.channel === "sms") {
-      await copyText(request.message, "Message copied for SMS");
-    }
-
-    updateRequestStatus(request.id, "opened");
+    await openExternalRequest(request, openElement.dataset.channel);
   }
+}
+
+async function openExternalRequest(request, channelName = request.channel, options = {}) {
+  const { copySms = true } = options;
+  const links = buildLinks(request);
+  const targetUrl = links[channelName];
+
+  if (!targetUrl) {
+    toast("Unsupported channel");
+    return;
+  }
+
+  if (channelName === "sms" && copySms) {
+    await copyText(request.message, "Message copied for SMS");
+  }
+
+  updateRequestStatus(request.id, "opened");
+  toast(`Opening ${CHANNEL_LABELS[channelName] || "message app"}`);
+
+  window.setTimeout(() => {
+    window.location.href = targetUrl;
+  }, 80);
 }
 
 function updateRequestStatus(id, status) {
@@ -620,6 +657,7 @@ function updateNotificationStatus() {
   if (!("Notification" in window)) {
     selectors.notificationStatus.textContent = "Notifications unsupported";
     selectors.notificationStatus.className = "status-pill warn";
+    selectors.notifyButton.textContent = "Notifications Unsupported";
     selectors.notifyButton.disabled = true;
     return;
   }
@@ -627,6 +665,12 @@ function updateNotificationStatus() {
   const permission = Notification.permission;
   selectors.notificationStatus.textContent = permission === "granted" ? "Notifications ready" : `Notifications ${permission}`;
   selectors.notificationStatus.className = permission === "granted" ? "status-pill ready" : "status-pill warn";
+  selectors.notifyButton.textContent = permission === "granted"
+    ? "Test Notification"
+    : permission === "denied"
+      ? "Notifications Blocked"
+      : "Enable Notifications";
+  selectors.notifyButton.disabled = !isSignedIn() || permission === "denied";
 }
 
 async function enableNotifications() {
@@ -637,23 +681,110 @@ async function enableNotifications() {
     return;
   }
 
+  if (Notification.permission === "granted") {
+    const shown = await showTestNotification();
+    await syncCloudState({ notify: true, push: false });
+    toast(shown ? "Test notification sent" : "Test notification unavailable");
+    return;
+  }
+
   const permission = await Notification.requestPermission();
   updateNotificationStatus();
-  toast(permission === "granted" ? "Notifications enabled" : "Notifications not enabled");
+  if (permission === "granted") {
+    await showTestNotification();
+    await syncCloudState({ notify: true, push: false });
+  }
+  toast(permission === "granted" ? "Notifications enabled. Test sent" : "Notifications not enabled");
 }
 
-async function showLocalNotification(request) {
+async function notifyPendingRequests() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  const candidates = state.requests.filter(shouldNotifyRequest);
+
+  if (candidates.length === 0) {
+    pruneNotifiedRequests();
+    save({ remote: false });
+    return;
+  }
+
+  for (const request of candidates) {
+    try {
+      const shown = await showRequestNotification(request);
+      if (shown) {
+        state.notifiedRequests[request.id] = "shown";
+      }
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+
+  pruneNotifiedRequests();
+  save({ remote: false });
+}
+
+function shouldNotifyRequest(request) {
+  return isSignedIn()
+    && request.status === "pending"
+    && isCurrentDeviceTarget(request)
+    && request.createdByDeviceId !== state.profile.deviceId
+    && state.notifiedRequests[request.id] !== "shown";
+}
+
+function isCurrentDeviceTarget(request) {
+  return request.targetDeviceId === state.profile.deviceId;
+}
+
+function pruneNotifiedRequests() {
+  const requestIds = new Set(state.requests.map((request) => request.id));
+  state.notifiedRequests = Object.fromEntries(
+    Object.entries(state.notifiedRequests).filter(([id]) => requestIds.has(id))
+  );
+}
+
+async function showRequestNotification(request) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
 
   const registration = await navigator.serviceWorker?.ready.catch(() => null);
-  if (!registration) return;
+  if (!registration) return false;
 
-  registration.showNotification("Pending message request", {
+  const url = `/?view=pending&request=${encodeURIComponent(request.id)}&handoff=1`;
+
+  await registration.showNotification(`${CHANNEL_LABELS[request.channel]} message request`, {
     body: `${CHANNEL_LABELS[request.channel]} / ${request.recipient}`,
     icon: "/icons/icon.svg",
     badge: "/icons/icon.svg",
-    data: { url: "/?view=pending" }
+    requireInteraction: true,
+    data: {
+      url,
+      requestId: request.id,
+      channel: request.channel
+    }
   });
+
+  return true;
+}
+
+async function showTestNotification() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return false;
+
+  const registration = await navigator.serviceWorker?.ready.catch(() => null);
+  if (!registration) return false;
+
+  try {
+    await registration.showNotification("N Smart notification test", {
+      body: "This device can receive PWA notifications.",
+      icon: "/icons/icon.svg",
+      badge: "/icons/icon.svg",
+      requireInteraction: true,
+      data: { url: "/?view=pending" }
+    });
+  } catch (error) {
+    console.warn(error);
+    return false;
+  }
+
+  return true;
 }
 
 async function registerServiceWorker() {
@@ -688,7 +819,9 @@ async function initFirebase() {
   if (state.firebaseAuth?.refreshToken) {
     try {
       await getValidFirebaseIdToken();
-      await syncCloudState();
+      await syncCloudState({ notify: true, push: true });
+      startRequestWatcher();
+      focusRequestedView();
     } catch (error) {
       clearSession();
       render();
@@ -737,28 +870,73 @@ function scheduleCloudSave() {
   }, 450);
 }
 
-async function syncCloudState() {
+function startRequestWatcher() {
+  if (firebaseRuntime.pollTimer || !isSignedIn()) {
+    return;
+  }
+
+  firebaseRuntime.pollTimer = window.setInterval(() => {
+    syncCloudState({ notify: true, push: false }).catch((error) => {
+      setCloudStatus("Cloud sync failed", "warn");
+      console.warn(error);
+    });
+  }, 6000);
+}
+
+function stopRequestWatcher() {
+  if (!firebaseRuntime.pollTimer) {
+    return;
+  }
+
+  window.clearInterval(firebaseRuntime.pollTimer);
+  firebaseRuntime.pollTimer = null;
+}
+
+async function syncCloudState(options = {}) {
+  const { notify = false, push = true } = options;
+
   if (!firebaseRuntime.configured || !state.firebaseAuth?.uid) {
     return;
   }
 
-  setCloudStatus("Cloud syncing", "warn");
-  const token = await getValidFirebaseIdToken();
-  const cloudState = await readRealtimePath(firebaseRuntime.config, userPath(), token);
-
-  if (cloudState?.devices) {
-    state.devices = mergeById(state.devices, Object.values(cloudState.devices));
+  if (firebaseRuntime.syncing) {
+    return;
   }
 
-  if (cloudState?.messageRequests) {
-    state.requests = mergeById(state.requests, Object.values(cloudState.messageRequests));
-  }
+  firebaseRuntime.syncing = true;
 
-  state.profile.accountId = state.firebaseAuth.uid;
-  upsertCurrentDevice();
-  save({ remote: false });
-  render();
-  await pushCloudState();
+  try {
+    setCloudStatus("Cloud syncing", "warn");
+    const token = await getValidFirebaseIdToken();
+    const cloudState = await readRealtimePath(firebaseRuntime.config, userPath(), token);
+
+    if (cloudState?.devices) {
+      state.devices = mergeById(state.devices, Object.values(cloudState.devices));
+    }
+
+    if (cloudState?.messageRequests) {
+      state.requests = mergeById(state.requests, Object.values(cloudState.messageRequests));
+    }
+
+    state.profile.accountId = state.firebaseAuth.uid;
+    upsertCurrentDevice();
+    save({ remote: false });
+    render();
+
+    if (notify) {
+      await notifyPendingRequests();
+    }
+
+    focusRequestedView();
+
+    if (push) {
+      await pushCloudState();
+    } else {
+      setCloudStatus("Cloud synced", "ready");
+    }
+  } finally {
+    firebaseRuntime.syncing = false;
+  }
 }
 
 async function pushCloudState() {
@@ -841,6 +1019,15 @@ function bindEvents() {
       // Ignore malformed tab sync messages.
     }
   });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible" || !isSignedIn()) return;
+
+    syncCloudState({ notify: true, push: false }).catch((error) => {
+      setCloudStatus("Cloud sync failed", "warn");
+      console.warn(error);
+    });
+  });
 }
 
 function isSignedIn() {
@@ -855,15 +1042,62 @@ function requireSignIn() {
   return false;
 }
 
-function focusRequestedView() {
-  const params = new URLSearchParams(window.location.search);
-  const target = params.get("view") === "pending"
-    ? document.querySelector("#pending-title")
-    : params.get("action") === "new-request"
-      ? document.querySelector("#compose-title")
-      : null;
+async function attemptNotificationHandoff(requestId) {
+  if (!isSignedIn()) return;
 
-  target?.scrollIntoView({ block: "start" });
+  const request = state.requests.find((item) => item.id === requestId);
+  if (!request) {
+    launchIntent.handoffStarted = false;
+    return;
+  }
+
+  if (!isCurrentDeviceTarget(request)) {
+    toast("Request is assigned to another device");
+    return;
+  }
+
+  clearHandoffParam();
+  await openExternalRequest(request, request.channel, { copySms: false });
+}
+
+function clearHandoffParam() {
+  if (!launchIntent.handoff || !("history" in window)) return;
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete("handoff");
+  window.history.replaceState(null, "", url);
+  launchIntent.handoff = false;
+}
+
+function focusRequestedView() {
+  if (!isSignedIn()) return;
+
+  const requestCard = launchIntent.requestId
+    ? [...document.querySelectorAll("[data-request-card]")].find((card) => card.dataset.requestCard === launchIntent.requestId)
+    : null;
+  const target = requestCard
+    || (launchIntent.view === "pending"
+      ? document.querySelector("#pending-title")
+      : launchParams.get("action") === "new-request"
+        ? document.querySelector("#compose-title")
+        : null);
+
+  if (target && !launchIntent.focused) {
+    target.scrollIntoView({ block: "start" });
+    launchIntent.focused = true;
+  }
+
+  if (!launchIntent.handoff || !launchIntent.requestId || launchIntent.handoffStarted) {
+    return;
+  }
+
+  const request = state.requests.find((item) => item.id === launchIntent.requestId);
+  if (!request) return;
+
+  launchIntent.handoffStarted = true;
+  window.setTimeout(() => {
+    attemptNotificationHandoff(request.id);
+  }, 350);
 }
 
 ensureDefaults();

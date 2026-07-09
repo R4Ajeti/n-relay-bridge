@@ -21,6 +21,7 @@ Current flow:
 - Users must register or sign in before using device and message actions.
 - Android works as the control device.
 - iOS works as the sender device.
+- The sender device can enable browser notifications after login.
 - The sender opens WhatsApp, Viber, or SMS/iMessage with the message prepared where supported.
 - The user manually taps Send inside the external app.
 
@@ -35,6 +36,8 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Pending request list for the sender device.
 - Firebase email/password login.
 - Realtime Database sync for linked devices and message requests.
+- Sender-side notifications for new assigned requests while the PWA is active.
+- Notification click-through to the pending request and channel handoff.
 - WhatsApp click-to-chat handoff.
 - Viber share/forward handoff.
 - SMS/iMessage compose handoff.
@@ -80,6 +83,29 @@ users/{uid}/messageRequests
 ```
 
 Recommended Realtime Database rules are in `firebase.rules.json`.
+
+## Notification Handoff
+
+After login, open the Android sender device, save it as a sender device, and tap **Enable Notifications**. Browsers only allow notification permission prompts from a user click, so the app cannot request this silently. After permission is granted, the same button becomes **Test Notification** so you can verify the current Android phone/browser can show PWA notifications.
+
+When another signed-in device creates a message request for that sender device:
+
+- the sender PWA checks Firebase for new assigned pending requests;
+- the sender device shows one notification per new request when permission is granted;
+- clicking the notification opens the pending request in the PWA;
+- the PWA attempts the selected handoff: WhatsApp, Viber, or SMS/iMessage.
+
+This static-hosting implementation works while the sender PWA is open or active enough for the browser to keep syncing. Closed-app, guaranteed delivery requires storing push subscriptions and sending Web Push/FCM notifications from a backend such as Firebase Cloud Functions.
+
+Phone test checklist:
+
+- Open the installed PWA on the Android sender phone, not only the desktop browser.
+- Sign in with the same Firebase account.
+- Save the Android phone as the sender device.
+- Tap **Enable Notifications**, then tap **Test Notification**.
+- If the test notification does not appear, check OS/browser notification settings for the installed PWA.
+- From the controller device, create a new request and choose that exact Android phone in the **Sender device** field.
+- If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. A manually linked device record created on the laptop has a different device ID and will not notify the phone.
 
 Check local Firebase setup:
 
@@ -149,6 +175,7 @@ Supported behavior:
 - Open the external app.
 - Prepare the recipient or message where the platform allows it.
 - Let the user review and manually send.
+- Show browser notifications for assigned requests while the sender PWA is active.
 
 Unsupported behavior:
 
@@ -156,6 +183,7 @@ Unsupported behavior:
 - Pressing buttons inside third-party apps.
 - Reading or controlling another app's UI.
 - Using push notifications to trigger automatic sending.
+- Reliably preselecting both recipient and message in personal Viber deep links.
 
 For true automated messaging, use official business APIs such as WhatsApp Business Cloud API, Viber Business Messages, or an SMS provider API.
 
@@ -165,6 +193,6 @@ For true automated messaging, use official business APIs such as WhatsApp Busine
 - Add backend-backed linked devices.
 - Add message request API.
 - Add push subscription storage.
-- Send Web Push notifications from the backend.
+- Send guaranteed Web Push/FCM notifications from the backend.
 - Add request status audit history.
 - Test on real Android and iOS Home Screen installs.
