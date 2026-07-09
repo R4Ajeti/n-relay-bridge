@@ -1,4 +1,5 @@
-const CACHE_NAME = "n-smart-phone-v6";
+const APP_VERSION = "__APP_VERSION__";
+const CACHE_NAME = `n-smart-phone-${APP_VERSION}`;
 
 const APP_SHELL = [
   "/",
@@ -32,6 +33,11 @@ self.addEventListener("fetch", (event) => {
   const requestUrl = new URL(request.url);
 
   if (requestUrl.pathname === "/src/firebase-config.generated.json") {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (requestUrl.pathname === "/src/app-version.generated.json") {
     event.respondWith(fetch(request));
     return;
   }

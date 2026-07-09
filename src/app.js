@@ -22,6 +22,7 @@ const CHANNEL_LABELS = {
 };
 
 const selectors = {
+  appVersion: document.querySelector("#app-version"),
   swStatus: document.querySelector("#sw-status"),
   notificationStatus: document.querySelector("#notification-status"),
   cloudStatus: document.querySelector("#cloud-status"),
@@ -838,6 +839,25 @@ async function registerServiceWorker() {
   }
 }
 
+async function loadAppVersion() {
+  try {
+    const response = await fetch(`/src/app-version.generated.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Version request failed with ${response.status}`);
+    }
+
+    const appVersion = await response.json();
+    selectors.appVersion.textContent = `v${appVersion.version}`;
+    selectors.appVersion.className = "status-pill ready";
+    selectors.appVersion.title = appVersion.builtAt ? `Built ${appVersion.builtAt}` : "App version";
+  } catch (error) {
+    selectors.appVersion.textContent = "Version local";
+    selectors.appVersion.className = "status-pill warn";
+    selectors.appVersion.title = "Run npm run build to generate the app version file.";
+    console.warn(error);
+  }
+}
+
 async function initFirebase() {
   const result = await loadFirebaseConfig();
 
@@ -1138,5 +1158,6 @@ ensureDefaults();
 bindEvents();
 render();
 registerServiceWorker();
+loadAppVersion();
 focusRequestedView();
 initFirebase();

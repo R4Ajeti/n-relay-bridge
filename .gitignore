@@ -13,6 +13,7 @@ jspm_packages/
 
 # Generated browser runtime config
 src/firebase-config.generated.json
+src/app-version.generated.json
 
 experimental-resource/*
 

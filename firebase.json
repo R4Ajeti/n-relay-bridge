@@ -27,6 +27,15 @@
             "value": "no-store"
           }
         ]
+      },
+      {
+        "source": "/src/app-version.generated.json",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          }
+        ]
       }
     ]
   }

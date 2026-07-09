@@ -125,6 +125,10 @@ Deploy to Firebase Hosting and release Realtime Database rules:
 npm run deploy
 ```
 
+Every deploy increments the patch version before release. For example, `1.0.0` becomes `1.0.1`. The live PWA shows the deployed version in the header as `vX.Y.Z`, and the service worker cache name uses the same version so app updates are easier to confirm on phones.
+
+Production versioning starts at `v1.0.1`.
+
 Live Firebase Hosting URL:
 
 ```text

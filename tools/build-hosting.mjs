@@ -1,10 +1,11 @@
-import { cp, mkdir, rm, stat } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const distDir = path.join(rootDir, "dist");
+const packageJson = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf8"));
 
 const requiredFiles = [
   "index.html",
@@ -13,6 +14,7 @@ const requiredFiles = [
   "sw.js",
   "icons/icon.svg",
   "src/app.js",
+  "src/app-version.generated.json",
   "src/firebase-client.js",
   "src/firebase-config.generated.json",
   "src/styles.css"
@@ -34,6 +36,13 @@ for (const file of requiredFiles) {
   const source = path.join(rootDir, file);
   const target = path.join(distDir, file);
   await mkdir(path.dirname(target), { recursive: true });
+
+  if (file === "sw.js") {
+    const serviceWorker = await readFile(source, "utf8");
+    await writeFile(target, serviceWorker.replaceAll("__APP_VERSION__", packageJson.version), "utf8");
+    continue;
+  }
+
   await cp(source, target);
 }
 
