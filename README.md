@@ -1,36 +1,52 @@
-# N Smart Phone
+<div align="center">
 
-N Smart Phone is a prompt-driven project for building a multi-device PWA messaging assistant.
+# n-relay-bridge
 
-The target product lets a user prepare a message request on one linked device and open WhatsApp, Viber, or SMS/iMessage on another linked device for final manual sending.
+A lightweight PWA for linking your devices and opening WhatsApp, Viber, or SMS/iMessage for user-confirmed sending.
 
-## Current Product Direction
+![PWA](https://img.shields.io/badge/PWA-ready-125b50)
+![Status](https://img.shields.io/badge/status-MVP-2457a6)
+![Send Mode](https://img.shields.io/badge/send-user_confirmed-80620c)
 
-- Android phone: control device.
-- iOS phone: sender device.
-- Both devices use the same PWA account.
-- Android creates message requests.
-- iOS receives pending requests.
-- iOS opens WhatsApp, Viber, or SMS/iMessage with the message prepared where the platform supports it.
-- The user manually confirms and sends inside the target messaging app.
+</div>
 
-This project does not attempt silent sending or third-party app UI automation.
+## What It Does
 
-## Prompt Workflow
+`n-relay-bridge` is a multi-device messaging assistant.
 
-Every build request should follow this workflow:
+The idea is simple: prepare a message on one device, open it on another device, then let the user confirm the final send inside the messaging app.
 
-1. Create a numbered prompt in `prompt/`.
-2. Execute that prompt.
-3. Update this README with the result.
-4. Record verification and known limitations.
+Current flow:
 
-## Prompt Index
+- Android works as the control device.
+- iOS works as the sender device.
+- The sender opens WhatsApp, Viber, or SMS/iMessage with the message prepared where supported.
+- The user manually taps Send inside the external app.
 
-| Prompt | Name | Status |
-|---|---|---|
-| [0001](prompt/0001-multi-device-pwa-messaging-assistant.md) | Multi-Device PWA Messaging Assistant | Created and executed as project foundation |
-| [0002](prompt/0002-javascript-gitignore.md) | JavaScript Gitignore | Created and executed |
+This project is intentionally built around transparent, user-confirmed handoff. It does not try to automate third-party apps in the background.
+
+## Features
+
+- Installable PWA shell with web app manifest.
+- Service worker with offline fallback.
+- Local device profile and linked-device prototype.
+- Message request composer.
+- Pending request list for the sender device.
+- WhatsApp click-to-chat handoff.
+- Viber share/forward handoff.
+- SMS/iMessage compose handoff.
+- Import/export payload for early manual sync testing.
+
+## Skills
+
+This project demonstrates four core PWA skills:
+
+| Skill | What it covers |
+|---|---|
+| [Web App Manifest](skill/01-web-app-manifest-installability.md) | Installability, app identity, icons, theme color, standalone launch |
+| [Service Worker](skill/02-service-worker-offline.md) | App shell caching, offline fallback, update lifecycle |
+| [Web Push](skill/03-web-push-notifications.md) | Sender-device alerts and notification click-through behavior |
+| [Messaging Deep Links](skill/04-messaging-deep-links.md) | WhatsApp, Viber, and SMS/iMessage user-confirmed handoff |
 
 ## Run Locally
 
@@ -40,71 +56,54 @@ Start a static server from the project root:
 python3 -m http.server 4173
 ```
 
-Open:
+Open the app:
 
 ```text
 http://127.0.0.1:4173/
 ```
 
-## PWA Capability Baseline
+Localhost is required for service worker testing in development.
 
-The first implementation should stay within these four capability areas:
+## Project Structure
 
-1. [Web app manifest and installability](skill/01-web-app-manifest-installability.md).
-2. [Service worker and offline fallback](skill/02-service-worker-offline.md).
-3. [Web push notifications](skill/03-web-push-notifications.md).
-4. [Messaging deep links for WhatsApp, Viber, and SMS/iMessage compose handoff](skill/04-messaging-deep-links.md).
+```text
+.
+|-- index.html
+|-- manifest.webmanifest
+|-- sw.js
+|-- offline.html
+|-- icons/
+|-- src/
+|   |-- app.js
+|   `-- styles.css
+`-- skill/
+```
 
-## Platform Notes
+## Platform Limits
 
-- iOS Home Screen web apps support Web Push on iOS/iPadOS 16.4 and later after user permission.
-- WhatsApp can be opened with click-to-chat links and optional prefilled text.
-- Viber supports a share/forward URL scheme for prepared text.
-- iOS Messages can be opened with the `sms:` URL scheme, but Apple does not officially support including message text in that URL.
+Personal WhatsApp, Viber, SMS, and iMessage accounts cannot be used for silent background sending from a PWA.
 
-## Execution Log
+Supported behavior:
 
-### Prompt 0001
+- Open the external app.
+- Prepare the recipient or message where the platform allows it.
+- Let the user review and manually send.
 
-Created the project foundation:
+Unsupported behavior:
 
-- Added the first implementation prompt.
-- Added root agent instructions in `AGENTS.md`.
-- Documented the prompt-driven workflow in this README.
-- Added the four internet-sourced PWA skill notes in `skill/`.
-- Built the first static PWA shell with manifest, service worker, offline fallback, local message requests, sync payload import/export, and messaging deep-link actions.
+- Sending WhatsApp or Viber messages silently.
+- Pressing buttons inside third-party apps.
+- Reading or controlling another app's UI.
+- Using push notifications to trigger automatic sending.
 
-Verification:
+For true automated messaging, use official business APIs such as WhatsApp Business Cloud API, Viber Business Messages, or an SMS provider API.
 
-- Repository contents were inspected before writing files.
-- Static runtime files now exist.
-- JavaScript syntax checks passed for `src/app.js` and `sw.js`.
-- `manifest.webmanifest` parses as valid JSON.
-- Local server returned `200 OK` for `/`, `/manifest.webmanifest`, and `/sw.js`.
-- Browser verification confirmed the main UI renders, creates a request, and generates WhatsApp, Viber, and SMS links.
-- Mobile viewport check at 390px wide reported no horizontal overflow.
-- Git status was inspected during implementation.
+## Roadmap
 
-### Prompt 0002
-
-Added repository hygiene for JavaScript development:
-
-- Created `.gitignore`.
-- Ignored private environment files, dependencies, build output, caches, logs, coverage, test artifacts, local databases, editor files, OS files, and local certificates.
-- Kept `.env.example`, `.env.sample`, `.env.template`, and useful VS Code example files trackable.
-
-Verification:
-
-- Confirmed there was no existing `.gitignore` before adding the new file.
-- Preserved lockfiles as trackable for reproducible JavaScript installs.
-- Checked ignore behavior for `.env`, `.env.local`, `node_modules`, `dist`, and `coverage`.
-
-## Next Recommended Work
-
-Build the backend-backed device sync layer:
-
-- account authentication
-- linked device registration
-- message request API
-- push subscription API
-- Web Push delivery from backend to sender device
+- Add real account authentication.
+- Add backend-backed linked devices.
+- Add message request API.
+- Add push subscription storage.
+- Send Web Push notifications from the backend.
+- Add request status audit history.
+- Test on real Android and iOS Home Screen installs.

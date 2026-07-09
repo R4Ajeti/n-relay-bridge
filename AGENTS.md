@@ -18,10 +18,9 @@ For each new user build request:
    - Do not silently bypass privacy, consent, app sandboxing, or platform security rules.
 
 3. Update `README.md`.
-   - Add or update the prompt index.
-   - Record execution status.
-   - Document setup, run, and verification steps.
-   - Note known limitations and next recommended work.
+   - Keep the README public-facing.
+   - Do not expose prompt numbering, internal build logs, or code-generation workflow details unless the user explicitly asks for them.
+   - Document setup, run, verification, known limitations, and next recommended work in product language.
 
 4. Verify the work.
    - Run relevant commands or tests when available.
@@ -49,7 +48,6 @@ Use these four baseline capability areas for the first PWA implementation:
 Every executed prompt must leave the README better than it found it. The README should always answer:
 
 - What is this project?
-- What prompt was last executed?
 - How do I run it?
 - What has been verified?
 - What limitations are known?
