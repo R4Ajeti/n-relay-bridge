@@ -106,30 +106,11 @@
             <p id="current-device-meta">Create a device profile to begin.</p>
           </div>
         </div>
-      </section>
 
-      <section class="panel gated-panel" aria-labelledby="link-title">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Pairing</p>
-            <h2 id="link-title">Linked Devices</h2>
-          </div>
+        <div class="device-list-section">
+          <h3>Added Devices</h3>
+          <div id="device-list" class="list-stack" aria-live="polite"></div>
         </div>
-
-        <form id="link-form" class="inline-form">
-          <label>
-            Device label
-            <input id="linked-device-name" name="linkedDeviceName" autocomplete="off" placeholder="iPhone Sender">
-          </label>
-          <select id="linked-device-platform" aria-label="Linked device platform">
-            <option value="ios">iOS</option>
-            <option value="android">Android</option>
-            <option value="other">Other</option>
-          </select>
-          <button class="secondary-action" type="submit">Link</button>
-        </form>
-
-        <div id="device-list" class="list-stack" aria-live="polite"></div>
       </section>
 
       <section class="panel compose-panel gated-panel" aria-labelledby="compose-title">

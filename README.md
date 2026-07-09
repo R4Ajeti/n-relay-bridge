@@ -2,7 +2,7 @@
 
 # n-relay-bridge
 
-A lightweight PWA for linking your devices and opening WhatsApp, Viber, or SMS/iMessage for user-confirmed sending.
+A lightweight PWA for saving your signed-in devices and opening WhatsApp, Viber, or SMS/iMessage for user-confirmed sending.
 
 ![PWA](https://img.shields.io/badge/PWA-ready-125b50)
 ![Status](https://img.shields.io/badge/status-MVP-2457a6)
@@ -31,11 +31,11 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 
 - Installable PWA shell with web app manifest.
 - Service worker with offline fallback.
-- Local device profile and linked-device prototype.
+- Local device profile and added-device list.
 - Message request composer.
 - Pending request list for the sender device.
 - Firebase email/password login.
-- Realtime Database sync for linked devices and message requests.
+- Realtime Database sync for saved devices and message requests.
 - Sender-side notifications for new assigned requests while the PWA is active.
 - Notification click-through to the pending request and channel handoff.
 - WhatsApp click-to-chat handoff.
@@ -116,7 +116,7 @@ Phone test checklist:
 - Tap **Enable Notifications**, then tap **Test Notification**.
 - If the test notification does not appear, check OS/browser notification settings for the installed PWA.
 - From the controller device, create a new request and choose the sender option with the same `#xxxxxx` suffix.
-- If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. A manually linked device record created on the laptop has a different device ID and will not notify the phone.
+- If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. Choosing another saved device ID will not notify that phone.
 - If **Test Notification** works but request notifications do not, the target device ID is wrong or the Android PWA is not currently syncing.
 - If the phone never shows the test notification, open Android settings for the browser or installed PWA and allow notifications there, then return to the app and tap **Test Notification** again.
 
@@ -164,6 +164,14 @@ http://127.0.0.1:4173/
 
 Localhost is required for service worker testing in development.
 
+## Verification
+
+Current verification:
+
+- `npm run check` passes JavaScript syntax checks for the app, service worker, and tooling.
+- The local app shell serves successfully at `http://127.0.0.1:4173/`.
+- The Device panel includes the added-device list, and no manual device-add form is served.
+
 ## Project Structure
 
 ```text
@@ -208,7 +216,7 @@ For true automated messaging, use official business APIs such as WhatsApp Busine
 ## Roadmap
 
 - Add real account authentication.
-- Add backend-backed linked devices.
+- Add backend-backed device management.
 - Add message request API.
 - Add push subscription storage.
 - Send guaranteed Web Push/FCM notifications from the backend.

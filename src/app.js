@@ -41,9 +41,6 @@ const selectors = {
   signOutButton: document.querySelector("#sign-out-button"),
   authLabel: document.querySelector("#auth-label"),
   authMeta: document.querySelector("#auth-meta"),
-  linkForm: document.querySelector("#link-form"),
-  linkedDeviceName: document.querySelector("#linked-device-name"),
-  linkedDevicePlatform: document.querySelector("#linked-device-platform"),
   deviceList: document.querySelector("#device-list"),
   requestForm: document.querySelector("#request-form"),
   recipient: document.querySelector("#recipient"),
@@ -237,7 +234,6 @@ function renderAccess() {
   const gatedControls = [
     ...selectors.profileForm.elements,
     selectors.notifyButton,
-    ...selectors.linkForm.elements,
     ...selectors.requestForm.elements,
     selectors.clearCompleted,
     selectors.exportButton,
@@ -267,18 +263,20 @@ function renderAccess() {
 }
 
 function renderDevices() {
-  if (state.devices.length === 0) {
-    selectors.deviceList.innerHTML = `<div class="empty-state">No linked devices.</div>`;
+  const addedDevices = state.devices.filter((device) => device.id !== state.profile.deviceId);
+
+  if (addedDevices.length === 0) {
+    selectors.deviceList.innerHTML = `<div class="empty-state">No other added devices.</div>`;
     return;
   }
 
-  selectors.deviceList.innerHTML = state.devices.map((device) => `
+  selectors.deviceList.innerHTML = addedDevices.map((device) => `
     <article class="list-item">
       <div>
         <strong>${escapeHtml(device.name)}</strong>
-        <p>${escapeHtml(device.platform.toUpperCase())} / ${escapeHtml(device.role || "sender")} / #${escapeHtml(shortId(device.id))}${device.id === state.profile.deviceId ? " / current" : ""}${device.source === "manual" ? " / manual" : ""}</p>
+        <p>${escapeHtml(device.platform.toUpperCase())} / ${escapeHtml(device.role || "sender")} / device #${escapeHtml(shortId(device.id))}${device.source === "manual" ? " / manual" : ""}</p>
       </div>
-      ${device.id === state.profile.deviceId ? "" : `<button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>`}
+      <button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>
     </article>
   `).join("");
 }
@@ -511,37 +509,6 @@ function clearSession() {
   state.requests = [];
   state.notifiedRequests = {};
   save({ remote: false });
-}
-
-function handleLinkSubmit(event) {
-  event.preventDefault();
-
-  if (!requireSignIn()) return;
-
-  const name = text(selectors.linkedDeviceName.value);
-
-  if (!name) {
-    toast("Device label required");
-    return;
-  }
-
-  state.devices.push({
-    id: uid("device"),
-    accountId: state.profile.accountId,
-    name,
-    platform: selectors.linkedDevicePlatform.value,
-    role: "sender",
-    trusted: true,
-    current: false,
-    source: "manual",
-    createdAt: now(),
-    updatedAt: now()
-  });
-
-  selectors.linkedDeviceName.value = "";
-  save();
-  render();
-  toast("Device linked");
 }
 
 function handleRequestSubmit(event) {
@@ -1036,7 +1003,6 @@ function bindEvents() {
   selectors.profileForm.addEventListener("submit", handleProfileSubmit);
   selectors.authForm.addEventListener("submit", handleAuthSubmit);
   selectors.signOutButton.addEventListener("click", handleSignOut);
-  selectors.linkForm.addEventListener("submit", handleLinkSubmit);
   selectors.requestForm.addEventListener("submit", handleRequestSubmit);
   selectors.deviceList.addEventListener("click", handleDeviceListClick);
   selectors.requestList.addEventListener("click", handleRequestListClick);
