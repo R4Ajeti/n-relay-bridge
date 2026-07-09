@@ -1,4 +1,4 @@
-const CACHE_NAME = "n-smart-phone-v1";
+const CACHE_NAME = "n-smart-phone-v2";
 
 const APP_SHELL = [
   "/",
@@ -6,6 +6,7 @@ const APP_SHELL = [
   "/offline.html",
   "/manifest.webmanifest",
   "/src/app.js",
+  "/src/firebase-client.js",
   "/src/styles.css",
   "/icons/icon.svg"
 ];
@@ -28,6 +29,12 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
+  const requestUrl = new URL(request.url);
+
+  if (requestUrl.pathname === "/src/firebase-config.generated.json") {
+    event.respondWith(fetch(request));
+    return;
+  }
 
   if (request.mode === "navigate") {
     event.respondWith(

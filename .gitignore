@@ -11,6 +11,11 @@ jspm_packages/
 !.env.sample
 !.env.template
 
+# Generated browser runtime config
+src/firebase-config.generated.json
+
+experimental-resource/*
+
 # JavaScript package manager logs
 npm-debug.log*
 yarn-debug.log*
@@ -85,6 +90,11 @@ Desktop.ini
 *.pem
 *.key
 *.crt
+
+# Firebase service-account keys
+*-firebase-adminsdk-*.json
+firebase-service-account*.json
+service-account*.json
 
 # Optional package-manager stores
 .pnpm-store/

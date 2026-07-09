@@ -212,6 +212,12 @@ h3 {
   gap: 12px;
 }
 
+.auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
 .inline-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(112px, 0.35fr) auto;
@@ -320,6 +326,7 @@ textarea:focus {
 }
 
 .device-card,
+.auth-card,
 .list-item,
 .request-card,
 .manual-send-banner {
@@ -336,7 +343,13 @@ textarea:focus {
   padding: 12px;
 }
 
+.auth-card {
+  margin-top: 12px;
+  padding: 12px;
+}
+
 .device-card p,
+.auth-card p,
 .list-item p,
 .request-card p,
 .manual-send-banner span {
@@ -514,7 +527,8 @@ textarea:focus {
 
   .request-actions a,
   .request-actions button,
-  .button-row button {
+  .button-row button,
+  .auth-actions button {
     flex: 1 1 130px;
   }
 }

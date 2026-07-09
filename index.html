@@ -27,6 +27,7 @@
       <div class="header-status" aria-live="polite">
         <span id="sw-status" class="status-pill">Service worker</span>
         <span id="notification-status" class="status-pill">Notifications</span>
+        <span id="cloud-status" class="status-pill">Cloud</span>
       </div>
     </header>
 
@@ -76,6 +77,27 @@
             <strong id="current-device-label">No device saved</strong>
             <p id="current-device-meta">Create a device profile to begin.</p>
           </div>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <label>
+            Email
+            <input id="auth-email" name="email" type="email" autocomplete="email">
+          </label>
+          <label>
+            Password
+            <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6">
+          </label>
+          <div class="button-row auth-actions">
+            <button class="primary-action" type="submit" name="authAction" value="sign-in">Sign In</button>
+            <button class="secondary-action" type="submit" name="authAction" value="create">Create</button>
+            <button id="sign-out-button" class="text-button" type="button">Sign Out</button>
+          </div>
+        </form>
+
+        <div class="auth-card" aria-live="polite">
+          <strong id="auth-label">Local mode</strong>
+          <p id="auth-meta">Firebase config not loaded.</p>
         </div>
       </section>
 

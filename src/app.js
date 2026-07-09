@@ -1,7 +1,17 @@
+import {
+  createEmailPasswordAccount,
+  loadFirebaseConfig,
+  readRealtimePath,
+  refreshFirebaseSession,
+  signInWithEmailPassword,
+  writeRealtimePath
+} from "./firebase-client.js";
+
 const STORAGE = {
   profile: "nsp.profile",
   devices: "nsp.devices",
-  requests: "nsp.requests"
+  requests: "nsp.requests",
+  firebaseAuth: "nsp.firebaseAuth"
 };
 
 const CHANNEL_LABELS = {
@@ -13,6 +23,7 @@ const CHANNEL_LABELS = {
 const selectors = {
   swStatus: document.querySelector("#sw-status"),
   notificationStatus: document.querySelector("#notification-status"),
+  cloudStatus: document.querySelector("#cloud-status"),
   notifyButton: document.querySelector("#notify-button"),
   profileForm: document.querySelector("#profile-form"),
   accountId: document.querySelector("#account-id"),
@@ -21,6 +32,13 @@ const selectors = {
   role: document.querySelector("#role"),
   currentDeviceLabel: document.querySelector("#current-device-label"),
   currentDeviceMeta: document.querySelector("#current-device-meta"),
+  authForm: document.querySelector("#auth-form"),
+  authEmail: document.querySelector("#auth-email"),
+  authPassword: document.querySelector("#auth-password"),
+  authSubmitButtons: document.querySelectorAll("#auth-form button[type='submit']"),
+  signOutButton: document.querySelector("#sign-out-button"),
+  authLabel: document.querySelector("#auth-label"),
+  authMeta: document.querySelector("#auth-meta"),
   linkForm: document.querySelector("#link-form"),
   linkedDeviceName: document.querySelector("#linked-device-name"),
   linkedDevicePlatform: document.querySelector("#linked-device-platform"),
@@ -42,7 +60,16 @@ const selectors = {
 let state = {
   profile: load(STORAGE.profile, null),
   devices: load(STORAGE.devices, []),
-  requests: load(STORAGE.requests, [])
+  requests: load(STORAGE.requests, []),
+  firebaseAuth: load(STORAGE.firebaseAuth, null)
+};
+
+const firebaseRuntime = {
+  config: null,
+  configured: false,
+  reason: "loading",
+  saveTimer: null,
+  pushing: false
 };
 
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("nsp-sync") : null;
@@ -56,10 +83,22 @@ function load(key, fallback) {
   }
 }
 
-function save() {
+function save(options = {}) {
+  const { remote = true } = options;
+
   localStorage.setItem(STORAGE.profile, JSON.stringify(state.profile));
   localStorage.setItem(STORAGE.devices, JSON.stringify(state.devices));
   localStorage.setItem(STORAGE.requests, JSON.stringify(state.requests));
+
+  if (state.firebaseAuth) {
+    localStorage.setItem(STORAGE.firebaseAuth, JSON.stringify(state.firebaseAuth));
+  } else {
+    localStorage.removeItem(STORAGE.firebaseAuth);
+  }
+
+  if (remote) {
+    scheduleCloudSave();
+  }
 }
 
 function uid(prefix) {
@@ -97,7 +136,7 @@ function ensureDefaults() {
   if (!state.profile) {
     state.profile = {
       deviceId: uid("device"),
-      accountId: `acct-${Math.random().toString(36).slice(2, 8)}`,
+      accountId: state.firebaseAuth?.uid || `acct-${Math.random().toString(36).slice(2, 8)}`,
       deviceName: detectPlatform() === "ios" ? "iPhone Sender" : "Android Control",
       platform: detectPlatform(),
       role: detectPlatform() === "ios" ? "sender" : "control",
@@ -106,24 +145,17 @@ function ensureDefaults() {
     };
   }
 
-  if (!state.devices.some((device) => device.id === state.profile.deviceId)) {
-    state.devices.unshift({
-      id: state.profile.deviceId,
-      accountId: state.profile.accountId,
-      name: state.profile.deviceName,
-      platform: state.profile.platform,
-      role: state.profile.role,
-      trusted: true,
-      current: true,
-      createdAt: state.profile.createdAt
-    });
+  if (state.firebaseAuth?.uid) {
+    state.profile.accountId = state.firebaseAuth.uid;
   }
 
-  save();
+  upsertCurrentDevice();
+  save({ remote: false });
 }
 
 function render() {
   renderProfile();
+  renderAuth();
   renderDevices();
   renderTargetOptions();
   renderRequests();
@@ -133,11 +165,47 @@ function render() {
 function renderProfile() {
   const { profile } = state;
   selectors.accountId.value = profile.accountId;
+  selectors.accountId.disabled = Boolean(state.firebaseAuth?.uid);
   selectors.deviceName.value = profile.deviceName;
   selectors.platform.value = profile.platform;
   selectors.role.value = profile.role;
   selectors.currentDeviceLabel.textContent = profile.deviceName;
   selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / ${profile.accountId}`;
+}
+
+function renderAuth() {
+  const signedIn = Boolean(state.firebaseAuth?.uid);
+  const configured = firebaseRuntime.configured;
+
+  selectors.authSubmitButtons.forEach((button) => {
+    button.disabled = !configured || signedIn;
+  });
+
+  selectors.signOutButton.disabled = !signedIn;
+
+  if (state.firebaseAuth?.email && document.activeElement !== selectors.authEmail) {
+    selectors.authEmail.value = state.firebaseAuth.email;
+  }
+
+  if (signedIn) {
+    selectors.authLabel.textContent = "Firebase signed in";
+    selectors.authMeta.textContent = `${state.firebaseAuth.email || "Firebase user"} / ${state.firebaseAuth.uid}`;
+    setCloudStatus("Cloud signed in", "ready");
+    return;
+  }
+
+  if (configured) {
+    selectors.authLabel.textContent = "Firebase ready";
+    selectors.authMeta.textContent = "Sign in to sync devices and requests.";
+    setCloudStatus("Cloud ready", "warn");
+    return;
+  }
+
+  selectors.authLabel.textContent = "Local mode";
+  selectors.authMeta.textContent = firebaseRuntime.reason === "loading"
+    ? "Checking Firebase config."
+    : "Firebase config not generated.";
+  setCloudStatus("Cloud local", "warn");
 }
 
 function renderDevices() {
@@ -159,7 +227,8 @@ function renderDevices() {
 
 function renderTargetOptions() {
   const senderDevices = state.devices.filter((device) => ["sender", "both"].includes(device.role || "sender"));
-  const options = (senderDevices.length ? senderDevices : state.devices).map((device) => `
+  const devices = senderDevices.length ? senderDevices : state.devices;
+  const options = devices.map((device) => `
     <option value="${device.id}">${escapeHtml(device.name)} (${escapeHtml(device.platform)})</option>
   `);
 
@@ -244,8 +313,11 @@ function upsertCurrentDevice() {
     role: state.profile.role,
     trusted: true,
     current: true,
-    createdAt: state.profile.createdAt
+    createdAt: state.profile.createdAt,
+    updatedAt: now()
   };
+
+  state.devices = state.devices.map((device) => ({ ...device, current: device.id === state.profile.deviceId }));
 
   if (index >= 0) {
     state.devices[index] = { ...state.devices[index], ...currentDevice };
@@ -264,7 +336,9 @@ function exportPayload() {
   }, null, 2);
 }
 
-function mergePayload(payload) {
+function mergePayload(payload, options = {}) {
+  const { broadcast = true } = options;
+
   if (!payload || payload.schema !== "n-smart-phone/sync-v1") {
     throw new Error("Unsupported payload");
   }
@@ -273,22 +347,34 @@ function mergePayload(payload) {
     throw new Error("Account ID mismatch");
   }
 
-  const deviceMap = new Map(state.devices.map((device) => [device.id, device]));
-  for (const device of payload.devices || []) {
-    deviceMap.set(device.id, { ...deviceMap.get(device.id), ...device, current: device.id === state.profile.deviceId });
-  }
-
-  const requestMap = new Map(state.requests.map((request) => [request.id, request]));
-  for (const request of payload.requests || []) {
-    requestMap.set(request.id, { ...requestMap.get(request.id), ...request });
-  }
-
-  state.devices = [...deviceMap.values()];
-  state.requests = [...requestMap.values()];
+  state.devices = mergeById(state.devices, payload.devices || []);
+  state.requests = mergeById(state.requests, payload.requests || []);
   upsertCurrentDevice();
   save();
   render();
-  channel?.postMessage({ type: "sync", payload: exportPayload() });
+
+  if (broadcast) {
+    channel?.postMessage({ type: "sync", payload: exportPayload() });
+  }
+}
+
+function mergeById(localItems, remoteItems) {
+  const itemMap = new Map(localItems.map((item) => [item.id, item]));
+
+  for (const remoteItem of remoteItems) {
+    const localItem = itemMap.get(remoteItem.id);
+    itemMap.set(remoteItem.id, chooseNewest(localItem, remoteItem));
+  }
+
+  return [...itemMap.values()];
+}
+
+function chooseNewest(localItem, remoteItem) {
+  if (!localItem) return remoteItem;
+
+  const localTime = localItem.updatedAt || localItem.createdAt || "";
+  const remoteTime = remoteItem.updatedAt || remoteItem.createdAt || "";
+  return remoteTime > localTime ? { ...localItem, ...remoteItem } : localItem;
 }
 
 function handleProfileSubmit(event) {
@@ -296,7 +382,7 @@ function handleProfileSubmit(event) {
 
   state.profile = {
     ...state.profile,
-    accountId: text(selectors.accountId.value),
+    accountId: state.firebaseAuth?.uid || text(selectors.accountId.value),
     deviceName: text(selectors.deviceName.value),
     platform: selectors.platform.value,
     role: selectors.role.value,
@@ -307,6 +393,50 @@ function handleProfileSubmit(event) {
   save();
   render();
   toast("Device saved");
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+
+  if (!firebaseRuntime.configured) {
+    toast("Firebase config missing");
+    return;
+  }
+
+  const email = text(selectors.authEmail.value);
+  const password = selectors.authPassword.value;
+  const action = event.submitter?.value || "sign-in";
+
+  if (!email || !password) {
+    toast("Email and password required");
+    return;
+  }
+
+  try {
+    setCloudStatus(action === "create" ? "Cloud creating" : "Cloud signing in", "warn");
+    const session = action === "create"
+      ? await createEmailPasswordAccount(firebaseRuntime.config, email, password)
+      : await signInWithEmailPassword(firebaseRuntime.config, email, password);
+
+    state.firebaseAuth = session;
+    state.profile.accountId = session.uid;
+    upsertCurrentDevice();
+    selectors.authPassword.value = "";
+    save({ remote: false });
+    render();
+    await syncCloudState();
+    toast(action === "create" ? "Account created" : "Signed in");
+  } catch (error) {
+    setCloudStatus("Cloud auth failed", "warn");
+    toast(error.message || "Firebase login failed");
+  }
+}
+
+function handleSignOut() {
+  state.firebaseAuth = null;
+  save({ remote: false });
+  render();
+  toast("Signed out");
 }
 
 function handleLinkSubmit(event) {
@@ -326,7 +456,8 @@ function handleLinkSubmit(event) {
     role: "sender",
     trusted: true,
     current: false,
-    createdAt: now()
+    createdAt: now(),
+    updatedAt: now()
   });
 
   selectors.linkedDeviceName.value = "";
@@ -476,8 +607,133 @@ async function registerServiceWorker() {
   }
 }
 
+async function initFirebase() {
+  const result = await loadFirebaseConfig();
+
+  firebaseRuntime.configured = result.configured;
+  firebaseRuntime.config = result.config || null;
+  firebaseRuntime.reason = result.reason || "";
+  renderAuth();
+
+  if (!result.configured) {
+    return;
+  }
+
+  if (state.firebaseAuth?.refreshToken) {
+    try {
+      await getValidFirebaseIdToken();
+      await syncCloudState();
+    } catch (error) {
+      setCloudStatus("Cloud auth failed", "warn");
+      toast(error.message || "Firebase session failed");
+    }
+  }
+}
+
+function setCloudStatus(message, tone) {
+  selectors.cloudStatus.textContent = message;
+  selectors.cloudStatus.className = tone === "ready" ? "status-pill ready" : "status-pill warn";
+}
+
+async function getValidFirebaseIdToken() {
+  if (!firebaseRuntime.config || !state.firebaseAuth?.refreshToken) {
+    return null;
+  }
+
+  if (state.firebaseAuth.idToken && Date.now() < Number(state.firebaseAuth.expiresAt || 0) - 120000) {
+    return state.firebaseAuth.idToken;
+  }
+
+  const refreshed = await refreshFirebaseSession(firebaseRuntime.config, state.firebaseAuth.refreshToken);
+  state.firebaseAuth = {
+    ...state.firebaseAuth,
+    ...refreshed
+  };
+  save({ remote: false });
+  renderAuth();
+
+  return state.firebaseAuth.idToken;
+}
+
+function scheduleCloudSave() {
+  if (!firebaseRuntime.configured || !state.firebaseAuth?.uid) {
+    return;
+  }
+
+  window.clearTimeout(firebaseRuntime.saveTimer);
+  firebaseRuntime.saveTimer = window.setTimeout(() => {
+    pushCloudState().catch((error) => {
+      setCloudStatus("Cloud sync failed", "warn");
+      console.warn(error);
+    });
+  }, 450);
+}
+
+async function syncCloudState() {
+  if (!firebaseRuntime.configured || !state.firebaseAuth?.uid) {
+    return;
+  }
+
+  setCloudStatus("Cloud syncing", "warn");
+  const token = await getValidFirebaseIdToken();
+  const cloudState = await readRealtimePath(firebaseRuntime.config, userPath(), token);
+
+  if (cloudState?.devices) {
+    state.devices = mergeById(state.devices, Object.values(cloudState.devices));
+  }
+
+  if (cloudState?.messageRequests) {
+    state.requests = mergeById(state.requests, Object.values(cloudState.messageRequests));
+  }
+
+  state.profile.accountId = state.firebaseAuth.uid;
+  upsertCurrentDevice();
+  save({ remote: false });
+  render();
+  await pushCloudState();
+}
+
+async function pushCloudState() {
+  if (firebaseRuntime.pushing || !firebaseRuntime.configured || !state.firebaseAuth?.uid) {
+    return;
+  }
+
+  firebaseRuntime.pushing = true;
+  setCloudStatus("Cloud syncing", "warn");
+
+  try {
+    const token = await getValidFirebaseIdToken();
+    await writeRealtimePath(firebaseRuntime.config, userPath(), token, serializeCloudState(), "PUT");
+    setCloudStatus("Cloud synced", "ready");
+  } finally {
+    firebaseRuntime.pushing = false;
+  }
+}
+
+function serializeCloudState() {
+  return {
+    account: {
+      uid: state.firebaseAuth.uid,
+      email: state.firebaseAuth.email || "",
+      updatedAt: now()
+    },
+    devices: objectById(state.devices),
+    messageRequests: objectById(state.requests)
+  };
+}
+
+function objectById(items) {
+  return Object.fromEntries(items.filter((item) => item.id).map((item) => [item.id, item]));
+}
+
+function userPath() {
+  return `users/${state.firebaseAuth.uid}`;
+}
+
 function bindEvents() {
   selectors.profileForm.addEventListener("submit", handleProfileSubmit);
+  selectors.authForm.addEventListener("submit", handleAuthSubmit);
+  selectors.signOutButton.addEventListener("click", handleSignOut);
   selectors.linkForm.addEventListener("submit", handleLinkSubmit);
   selectors.requestForm.addEventListener("submit", handleRequestSubmit);
   selectors.deviceList.addEventListener("click", handleDeviceListClick);
@@ -504,7 +760,7 @@ function bindEvents() {
   channel?.addEventListener("message", (event) => {
     if (event.data?.type !== "sync") return;
     try {
-      mergePayload(JSON.parse(event.data.payload));
+      mergePayload(JSON.parse(event.data.payload), { broadcast: false });
     } catch {
       // Ignore malformed tab sync messages.
     }
@@ -527,3 +783,4 @@ bindEvents();
 render();
 registerServiceWorker();
 focusRequestedView();
+initFirebase();

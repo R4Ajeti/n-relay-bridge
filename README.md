@@ -32,6 +32,8 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Local device profile and linked-device prototype.
 - Message request composer.
 - Pending request list for the sender device.
+- Firebase email/password login.
+- Realtime Database sync for linked devices and message requests.
 - WhatsApp click-to-chat handoff.
 - Viber share/forward handoff.
 - SMS/iMessage compose handoff.
@@ -47,13 +49,41 @@ This project demonstrates four core PWA skills:
 | [Service Worker](skill/02-service-worker-offline.md) | App shell caching, offline fallback, update lifecycle |
 | [Web Push](skill/03-web-push-notifications.md) | Sender-device alerts and notification click-through behavior |
 | [Messaging Deep Links](skill/04-messaging-deep-links.md) | WhatsApp, Viber, and SMS/iMessage user-confirmed handoff |
+| [Firebase Realtime Database](skill/05-firebase-realtime-database.md) | Authenticated device sync and request persistence |
+
+## Firebase Setup
+
+Create a Firebase project with Authentication email/password enabled and Realtime Database created. Encode the Firebase Web config as base64 and set:
+
+```text
+N_RELAY_FIREBASE_WEB_CONFIG_BASE64
+```
+
+For local setup, copy `.env.example` to `.env` and fill in the value.
+
+Do not use Firebase Admin SDK or service-account JSON in the PWA.
+
+Generate the browser runtime config:
+
+```bash
+npm run firebase:config
+```
+
+The app stores user data under:
+
+```text
+users/{uid}/devices
+users/{uid}/messageRequests
+```
+
+Recommended Realtime Database rules are in `firebase.rules.json`.
 
 ## Run Locally
 
 Start a static server from the project root:
 
 ```bash
-python3 -m http.server 4173
+npm run serve
 ```
 
 Open the app:
@@ -72,9 +102,13 @@ Localhost is required for service worker testing in development.
 |-- manifest.webmanifest
 |-- sw.js
 |-- offline.html
+|-- firebase.rules.json
+|-- package.json
+|-- tools/
 |-- icons/
 |-- src/
 |   |-- app.js
+|   |-- firebase-client.js
 |   `-- styles.css
 `-- skill/
 ```
