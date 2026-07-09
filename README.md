@@ -102,10 +102,12 @@ Phone test checklist:
 - Open the installed PWA on the Android sender phone, not only the desktop browser.
 - Sign in with the same Firebase account.
 - Save the Android phone as the sender device.
+- Note the Android phone's current device suffix, shown as `device #xxxxxx`.
 - Tap **Enable Notifications**, then tap **Test Notification**.
 - If the test notification does not appear, check OS/browser notification settings for the installed PWA.
-- From the controller device, create a new request and choose that exact Android phone in the **Sender device** field.
+- From the controller device, create a new request and choose the sender option with the same `#xxxxxx` suffix.
 - If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. A manually linked device record created on the laptop has a different device ID and will not notify the phone.
+- If **Test Notification** works but request notifications do not, the target device ID is wrong or the Android PWA is not currently syncing.
 
 Check local Firebase setup:
 

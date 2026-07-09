@@ -129,6 +129,10 @@ function now() {
   return new Date().toISOString();
 }
 
+function shortId(id) {
+  return String(id || "").replace(/[^a-zA-Z0-9]/g, "").slice(-6) || "unknown";
+}
+
 function text(value) {
   return String(value ?? "").trim();
 }
@@ -187,7 +191,7 @@ function renderProfile() {
   selectors.platform.value = profile.platform;
   selectors.role.value = profile.role;
   selectors.currentDeviceLabel.textContent = profile.deviceName;
-  selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / ${profile.accountId}`;
+  selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / device #${shortId(profile.deviceId)}`;
 }
 
 function renderAuth() {
@@ -271,7 +275,7 @@ function renderDevices() {
     <article class="list-item">
       <div>
         <strong>${escapeHtml(device.name)}</strong>
-        <p>${escapeHtml(device.platform.toUpperCase())} / ${escapeHtml(device.role || "sender")}${device.id === state.profile.deviceId ? " / current" : ""}</p>
+        <p>${escapeHtml(device.platform.toUpperCase())} / ${escapeHtml(device.role || "sender")} / #${escapeHtml(shortId(device.id))}${device.id === state.profile.deviceId ? " / current" : ""}${device.source === "manual" ? " / manual" : ""}</p>
       </div>
       ${device.id === state.profile.deviceId ? "" : `<button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>`}
     </article>
@@ -282,7 +286,7 @@ function renderTargetOptions() {
   const senderDevices = state.devices.filter((device) => ["sender", "both"].includes(device.role || "sender"));
   const devices = senderDevices.length ? senderDevices : state.devices;
   const options = devices.map((device) => `
-    <option value="${device.id}">${escapeHtml(device.name)} (${escapeHtml(device.platform)})</option>
+    <option value="${device.id}">${escapeHtml(device.name)} (${escapeHtml(device.platform)} #${escapeHtml(shortId(device.id))}${device.source === "manual" ? " manual" : ""})</option>
   `);
 
   selectors.targetDevice.innerHTML = options.join("");
@@ -306,7 +310,7 @@ function renderRequests() {
           <div class="request-meta">
             <span class="tag ready">${escapeHtml(CHANNEL_LABELS[request.channel])}</span>
             <span class="tag">${escapeHtml(request.status.replaceAll("_", " "))}</span>
-            <span class="tag">${escapeHtml(target?.name || "Unknown device")}</span>
+            <span class="tag">${escapeHtml(target ? `${target.name} #${shortId(target.id)}` : "Unknown device")}</span>
           </div>
           <h3>${escapeHtml(request.recipient)}</h3>
           <p class="request-message">${escapeHtml(request.message)}</p>
@@ -367,6 +371,8 @@ function upsertCurrentDevice() {
     role: state.profile.role,
     trusted: true,
     current: true,
+    source: "self",
+    lastSeenAt: now(),
     createdAt: state.profile.createdAt,
     updatedAt: now()
   };
@@ -526,6 +532,7 @@ function handleLinkSubmit(event) {
     role: "sender",
     trusted: true,
     current: false,
+    source: "manual",
     createdAt: now(),
     updatedAt: now()
   });
@@ -749,18 +756,15 @@ async function showRequestNotification(request) {
   if (!registration) return false;
 
   const url = `/?view=pending&request=${encodeURIComponent(request.id)}&handoff=1`;
-
-  await registration.showNotification(`${CHANNEL_LABELS[request.channel]} message request`, {
+  const notificationOptions = buildNotificationOptions({
     body: `${CHANNEL_LABELS[request.channel]} / ${request.recipient}`,
-    icon: "/icons/icon.svg",
-    badge: "/icons/icon.svg",
-    requireInteraction: true,
-    data: {
-      url,
-      requestId: request.id,
-      channel: request.channel
-    }
+    url,
+    tag: `n-smart-request-${request.id}`,
+    requestId: request.id,
+    channel: request.channel
   });
+
+  await showNotificationViaWorker(registration, `${CHANNEL_LABELS[request.channel]} message request`, notificationOptions);
 
   return true;
 }
@@ -772,19 +776,49 @@ async function showTestNotification() {
   if (!registration) return false;
 
   try {
-    await registration.showNotification("N Smart notification test", {
-      body: "This device can receive PWA notifications.",
-      icon: "/icons/icon.svg",
-      badge: "/icons/icon.svg",
-      requireInteraction: true,
-      data: { url: "/?view=pending" }
-    });
+    await showNotificationViaWorker(registration, "N Smart notification test", buildNotificationOptions({
+      body: `Android notification check for device #${shortId(state.profile.deviceId)}`,
+      url: "/?view=pending",
+      tag: `n-smart-test-${Date.now()}`
+    }));
   } catch (error) {
     console.warn(error);
     return false;
   }
 
   return true;
+}
+
+function buildNotificationOptions(options) {
+  return {
+    body: options.body,
+    icon: "/icons/icon.svg",
+    badge: "/icons/icon.svg",
+    requireInteraction: true,
+    renotify: true,
+    silent: false,
+    tag: options.tag,
+    timestamp: Date.now(),
+    vibrate: [180, 80, 180],
+    data: {
+      url: options.url || "/",
+      requestId: options.requestId || "",
+      channel: options.channel || ""
+    }
+  };
+}
+
+async function showNotificationViaWorker(registration, title, options) {
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: "show-notification",
+      title,
+      options
+    });
+    return;
+  }
+
+  await registration.showNotification(title, options);
 }
 
 async function registerServiceWorker() {

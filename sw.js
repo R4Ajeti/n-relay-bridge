@@ -1,4 +1,4 @@
-const CACHE_NAME = "n-smart-phone-v5";
+const CACHE_NAME = "n-smart-phone-v6";
 
 const APP_SHELL = [
   "/",
@@ -81,6 +81,16 @@ self.addEventListener("push", (event) => {
       badge: "/icons/icon.svg",
       data: { url: payload.url || "/?view=pending" }
     })
+  );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "notification-diagnostic") {
+    return;
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(event.data.title || "N Smart notification", event.data.options || {})
   );
 });
 
