@@ -171,6 +171,8 @@ Current verification:
 - `npm run check` passes JavaScript syntax checks for the app, service worker, and tooling.
 - The local app shell serves successfully at `http://127.0.0.1:4173/`.
 - The Device panel includes the added-device list, and no manual device-add form is served.
+- The desktop workspace keeps Device, Control, and Sync on the left while Pending Requests owns the full right column.
+- Hidden authenticated screens stay hidden while the sign-in screen is active.
 
 ## Project Structure
 

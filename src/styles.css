@@ -1,11 +1,11 @@
 :root {
   color-scheme: light;
-  --bg: #f7f4ed;
-  --surface: #fffdfa;
-  --surface-strong: #f1ece2;
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --surface-strong: #f0f4f2;
   --ink: #1f2d2b;
   --muted: #5e6c69;
-  --line: #d8d0c2;
+  --line: #d8e1dd;
   --accent: #125b50;
   --accent-strong: #0c4038;
   --accent-soft: #dcefeb;
@@ -15,7 +15,7 @@
   --danger-soft: #f8dfdc;
   --warning: #80620c;
   --warning-soft: #fff3c4;
-  --shadow: 0 18px 50px rgb(31 45 43 / 10%);
+  --shadow: 0 14px 34px rgb(31 45 43 / 8%);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -27,9 +27,13 @@ body {
   min-width: 320px;
   margin: 0;
   background:
-    linear-gradient(180deg, rgb(255 253 250 / 80%), rgb(247 244 237 / 40%) 260px),
+    linear-gradient(180deg, rgb(255 255 255 / 92%), rgb(245 247 246 / 76%) 280px),
     var(--bg);
   color: var(--ink);
+}
+
+[hidden] {
+  display: none !important;
 }
 
 button,
@@ -70,7 +74,9 @@ button:disabled {
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
-  padding: 24px clamp(16px, 4vw, 40px);
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 22px clamp(16px, 4vw, 40px);
 }
 
 .brand-mark {
@@ -186,8 +192,15 @@ h3 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  grid-template-columns: minmax(360px, 0.82fr) minmax(0, 1.18fr);
+  grid-template-areas:
+    "device pending"
+    "compose pending"
+    "sync pending";
   gap: 16px;
+  align-items: start;
+  max-width: 1500px;
+  margin: 0 auto;
   padding: 0 clamp(16px, 4vw, 40px) 40px;
 }
 
@@ -226,7 +239,7 @@ h3 {
   border-radius: 8px;
   background: var(--surface);
   padding: 18px;
-  box-shadow: 0 10px 28px rgb(31 45 43 / 7%);
+  box-shadow: 0 8px 22px rgb(31 45 43 / 5%);
 }
 
 .app-workspace.is-locked .gated-panel {
@@ -247,9 +260,23 @@ h3 {
   text-align: center;
 }
 
-.compose-panel,
+.device-panel {
+  grid-area: device;
+}
+
+.compose-panel {
+  grid-area: compose;
+}
+
 .pending-panel {
-  grid-row: span 2;
+  display: flex;
+  grid-area: pending;
+  min-height: max(560px, calc(100vh - 132px));
+  flex-direction: column;
+}
+
+.sync-panel {
+  grid-area: sync;
 }
 
 .panel-header {
@@ -265,6 +292,10 @@ h3 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.compose-panel .form-grid {
+  grid-template-columns: 1fr;
 }
 
 .auth-form {
@@ -288,11 +319,13 @@ textarea {
   border-radius: 7px;
   background: #fff;
   color: var(--ink);
-  padding: 10px 11px;
+  min-height: 44px;
+  padding: 10px 12px;
   outline: none;
 }
 
 textarea {
+  min-height: 120px;
   resize: vertical;
 }
 
@@ -428,6 +461,11 @@ textarea:focus {
   gap: 10px;
 }
 
+.pending-panel .request-list {
+  flex: 1;
+  align-content: start;
+}
+
 .list-stack {
   margin-top: 14px;
 }
@@ -458,7 +496,7 @@ textarea:focus {
 .request-card {
   display: grid;
   gap: 12px;
-  padding: 14px;
+  padding: 15px;
 }
 
 .request-card.done {
@@ -505,10 +543,6 @@ textarea:focus {
   color: var(--danger);
 }
 
-.sync-panel {
-  grid-column: 1 / -1;
-}
-
 .sync-panel textarea {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 0.82rem;
@@ -525,12 +559,15 @@ textarea:focus {
   border-radius: 8px;
   background: var(--accent);
   color: white;
+  opacity: 0;
   padding: 12px 14px;
+  pointer-events: none;
   box-shadow: var(--shadow);
-  transition: transform 180ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .toast.show {
+  opacity: 1;
   transform: translateY(0);
 }
 
@@ -553,11 +590,15 @@ textarea:focus {
 
   .app-shell {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "device"
+      "compose"
+      "pending"
+      "sync";
   }
 
-  .compose-panel,
   .pending-panel {
-    grid-row: auto;
+    min-height: 0;
   }
 }
 
