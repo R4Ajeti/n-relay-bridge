@@ -86,7 +86,17 @@ Recommended Realtime Database rules are in `firebase.rules.json`.
 
 ## Notification Handoff
 
-After login, open the Android sender device, save it as a sender device, and tap **Enable Notifications**. Browsers only allow notification permission prompts from a user click, so the app cannot request this silently. After permission is granted, the same button becomes **Test Notification** so you can verify the current Android phone/browser can show PWA notifications.
+After login, open the Android sender device, save it as a sender device, and tap **Enable Notifications**. Browsers only allow notification permission prompts from a user click, so the app cannot request this silently. After permission is granted, the same button becomes **Test Notification** so you can verify the current Android phone/browser can show PWA notifications. The test uses the same browser notification path as new assigned requests.
+
+To get a phone popup for a newly arrived message request:
+
+- Open the installed PWA on the Android sender phone.
+- Sign in with the same Firebase account as the controller.
+- Confirm the phone is saved as the sender device and note its `device #xxxxxx` suffix.
+- Tap **Enable Notifications** on the phone and accept the browser/OS prompt.
+- Tap **Test Notification**. A visible test notification must appear on that phone before request notifications can work.
+- On the controller device, create the request and select the sender option with the same phone `#xxxxxx` suffix.
+- Keep the sender PWA open or recently active so it can sync Firebase and display the popup.
 
 When another signed-in device creates a message request for that sender device:
 
@@ -108,6 +118,7 @@ Phone test checklist:
 - From the controller device, create a new request and choose the sender option with the same `#xxxxxx` suffix.
 - If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. A manually linked device record created on the laptop has a different device ID and will not notify the phone.
 - If **Test Notification** works but request notifications do not, the target device ID is wrong or the Android PWA is not currently syncing.
+- If the phone never shows the test notification, open Android settings for the browser or installed PWA and allow notifications there, then return to the app and tap **Test Notification** again.
 
 Check local Firebase setup:
 
@@ -181,7 +192,7 @@ Supported behavior:
 - Open the external app.
 - Prepare the recipient or message where the platform allows it.
 - Let the user review and manually send.
-- Show browser notifications for assigned requests while the sender PWA is active.
+- Show browser notifications for assigned requests while the sender PWA is open or active enough to sync.
 
 Unsupported behavior:
 
@@ -190,6 +201,7 @@ Unsupported behavior:
 - Reading or controlling another app's UI.
 - Using push notifications to trigger automatic sending.
 - Reliably preselecting both recipient and message in personal Viber deep links.
+- Guaranteed closed-app request popups without a Web Push/FCM backend.
 
 For true automated messaging, use official business APIs such as WhatsApp Business Cloud API, Viber Business Messages, or an SMS provider API.
 

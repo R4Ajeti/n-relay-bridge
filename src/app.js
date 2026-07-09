@@ -691,7 +691,7 @@ async function enableNotifications() {
 
   if (Notification.permission === "granted") {
     const shown = await showTestNotification();
-    await syncCloudState({ notify: true, push: false });
+    await syncAfterNotificationChange();
     toast(shown ? "Test notification sent" : "Test notification unavailable");
     return;
   }
@@ -700,9 +700,20 @@ async function enableNotifications() {
   updateNotificationStatus();
   if (permission === "granted") {
     await showTestNotification();
-    await syncCloudState({ notify: true, push: false });
+    await syncAfterNotificationChange();
   }
   toast(permission === "granted" ? "Notifications enabled. Test sent" : "Notifications not enabled");
+}
+
+async function syncAfterNotificationChange() {
+  try {
+    await syncCloudState({ notify: true, push: false });
+  } catch (error) {
+    setCloudStatus("Cloud sync failed", "warn");
+    console.warn(error);
+  }
+
+  await notifyPendingRequests();
 }
 
 async function notifyPendingRequests() {
@@ -810,15 +821,6 @@ function buildNotificationOptions(options) {
 }
 
 async function showNotificationViaWorker(registration, title, options) {
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: "show-notification",
-      title,
-      options
-    });
-    return;
-  }
-
   await registration.showNotification(title, options);
 }
 

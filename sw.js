@@ -90,16 +90,6 @@ self.addEventListener("push", (event) => {
   );
 });
 
-self.addEventListener("message", (event) => {
-  if (event.data?.type !== "notification-diagnostic") {
-    return;
-  }
-
-  event.waitUntil(
-    self.registration.showNotification(event.data.title || "N Smart notification", event.data.options || {})
-  );
-});
-
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const targetUrl = new URL(event.notification.data?.url || "/", self.location.origin).href;
