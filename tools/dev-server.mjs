@@ -46,6 +46,7 @@ async function handleHealth(response) {
       config: "missing",
       projectId: null,
       databaseURL: null,
+      authProvider: "unknown",
       databaseReachable: false,
       databaseRules: "unknown",
       authenticatedSmokeTest: "skipped"
@@ -57,6 +58,7 @@ async function handleHealth(response) {
     result.firebase.config = "loaded";
     result.firebase.projectId = config.projectId;
     result.firebase.databaseURL = config.databaseURL;
+    result.firebase.authProvider = await checkAuthProvider(config);
 
     const databaseCheck = await checkDatabaseReachability(config);
     result.firebase.databaseReachable = databaseCheck.reachable;
@@ -72,6 +74,7 @@ async function handleHealth(response) {
 
     result.ok = result.firebase.databaseReachable
       && result.firebase.config === "loaded"
+      && result.firebase.authProvider === "enabled"
       && !String(result.firebase.authenticatedSmokeTest).startsWith("failed");
     result.status = result.ok ? "ok" : "degraded";
   } catch (error) {
@@ -81,6 +84,28 @@ async function handleHealth(response) {
 
   result.durationMs = Date.now() - startedAt;
   writeJson(response, result.ok ? 200 : 503, result);
+}
+
+async function checkAuthProvider(config) {
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(config.apiKey)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: "n-relay-health-check@example.invalid",
+      password: "not-a-real-password",
+      returnSecureToken: true
+    })
+  });
+  const payload = await response.json().catch(() => null);
+  const message = String(payload?.error?.message || "");
+
+  if (response.ok) return "enabled";
+  if (message.includes("CONFIGURATION_NOT_FOUND")) return "not-enabled";
+  if (message.includes("EMAIL_NOT_FOUND") || message.includes("INVALID_LOGIN_CREDENTIALS") || message.includes("INVALID_PASSWORD")) {
+    return "enabled";
+  }
+
+  return `unknown-${response.status}`;
 }
 
 async function readFirebaseBrowserConfig() {

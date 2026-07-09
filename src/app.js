@@ -55,6 +55,7 @@ const selectors = {
   copyPayload: document.querySelector("#copy-payload"),
   importButton: document.querySelector("#import-button"),
   toast: document.querySelector("#toast"),
+  authScreen: document.querySelector("#auth-screen"),
   appShell: document.querySelector("#main"),
   gatedPanels: document.querySelectorAll(".gated-panel")
 };
@@ -149,19 +150,19 @@ function ensureDefaults() {
 
   if (state.firebaseAuth?.uid) {
     state.profile.accountId = state.firebaseAuth.uid;
+    upsertCurrentDevice();
   }
 
-  upsertCurrentDevice();
   save({ remote: false });
 }
 
 function render() {
   renderProfile();
   renderAuth();
-  renderAccess();
   renderDevices();
   renderTargetOptions();
   renderRequests();
+  renderAccess();
   updateNotificationStatus();
 }
 
@@ -185,6 +186,8 @@ function renderAuth() {
   });
 
   selectors.signOutButton.disabled = !signedIn;
+  selectors.signOutButton.classList.toggle("is-visible", signedIn);
+  selectors.signOutButton.hidden = !signedIn;
 
   if (state.firebaseAuth?.email && document.activeElement !== selectors.authEmail) {
     selectors.authEmail.value = state.firebaseAuth.email;
@@ -228,6 +231,10 @@ function renderAccess() {
   ].filter(Boolean);
 
   selectors.appShell.classList.toggle("is-locked", !signedIn);
+  selectors.appShell.classList.toggle("is-hidden", !signedIn);
+  selectors.appShell.hidden = !signedIn;
+  selectors.authScreen.classList.toggle("is-hidden", signedIn);
+  selectors.authScreen.hidden = signedIn;
   selectors.gatedPanels.forEach((panel) => panel.setAttribute("aria-disabled", String(!signedIn)));
 
   gatedControls.forEach((control) => {
@@ -468,12 +475,16 @@ async function handleAuthSubmit(event) {
 }
 
 function handleSignOut() {
+  clearSession();
+  render();
+  toast("Signed out");
+}
+
+function clearSession() {
   state.firebaseAuth = null;
   state.devices = [];
   state.requests = [];
   save({ remote: false });
-  render();
-  toast("Signed out");
 }
 
 function handleLinkSubmit(event) {
@@ -679,8 +690,10 @@ async function initFirebase() {
       await getValidFirebaseIdToken();
       await syncCloudState();
     } catch (error) {
+      clearSession();
+      render();
       setCloudStatus("Cloud auth failed", "warn");
-      toast(error.message || "Firebase session failed");
+      toast("Session expired. Sign in again.");
     }
   }
 }

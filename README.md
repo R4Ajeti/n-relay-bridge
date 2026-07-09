@@ -64,6 +64,8 @@ For local setup, copy `env_example` to `.env` and fill in the value.
 
 Do not use Firebase Admin SDK or service-account JSON in the PWA.
 
+If login or registration returns `configuration not found`, enable Firebase Console > Authentication > Sign-in method > Email/Password for the project in your web config.
+
 Generate the browser runtime config:
 
 ```bash
@@ -84,6 +86,8 @@ Check local Firebase setup:
 ```text
 http://localhost:4173/health
 ```
+
+The health endpoint checks both Realtime Database reachability and whether Firebase Email/Password Auth is enabled.
 
 ## Run Locally
 

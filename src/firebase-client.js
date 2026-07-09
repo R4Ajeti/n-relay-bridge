@@ -140,7 +140,8 @@ function formatFirebaseError(message) {
     MISSING_PASSWORD: "Password is required",
     WEAK_PASSWORD: "Password should be at least 6 characters",
     USER_DISABLED: "This account is disabled",
-    TOKEN_EXPIRED: "Firebase session expired"
+    TOKEN_EXPIRED: "Firebase session expired",
+    CONFIGURATION_NOT_FOUND: "Firebase Auth is not enabled for this project. In Firebase Console, enable Authentication > Sign-in method > Email/Password."
   };
 
   return messages[cleanMessage] || cleanMessage.replaceAll("_", " ").toLowerCase();

@@ -1,4 +1,4 @@
-const CACHE_NAME = "n-smart-phone-v2";
+const CACHE_NAME = "n-smart-phone-v4";
 
 const APP_SHELL = [
   "/",

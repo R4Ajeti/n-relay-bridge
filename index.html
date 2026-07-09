@@ -28,14 +28,43 @@
         <span id="sw-status" class="status-pill">Service worker</span>
         <span id="notification-status" class="status-pill">Notifications</span>
         <span id="cloud-status" class="status-pill">Cloud</span>
+        <button id="sign-out-button" class="text-button header-action" type="button" hidden>Sign Out</button>
       </div>
     </header>
 
-    <main id="main" class="app-shell is-locked">
-      <section class="panel device-panel auth-panel" aria-labelledby="device-title">
+    <section id="auth-screen" class="auth-screen" aria-labelledby="auth-title">
+      <div class="auth-hero">
+        <p class="eyebrow">Account</p>
+        <h2 id="auth-title">Sign in to continue</h2>
+        <p>Register or sign in first. Device management and message requests unlock after authentication.</p>
+      </div>
+
+      <form id="auth-form" class="auth-form">
+        <label>
+          Email
+          <input id="auth-email" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label>
+          Password
+          <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6" required>
+        </label>
+        <div class="button-row auth-actions">
+          <button class="primary-action" type="submit" name="authAction" value="sign-in">Sign In</button>
+          <button class="secondary-action" type="submit" name="authAction" value="create">Create Account</button>
+        </div>
+      </form>
+
+      <div class="auth-card" aria-live="polite">
+        <strong id="auth-label">Local mode</strong>
+        <p id="auth-meta">Firebase config not loaded.</p>
+      </div>
+    </section>
+
+    <main id="main" class="app-shell app-workspace" hidden>
+      <section class="panel device-panel" aria-labelledby="device-title">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Account</p>
+            <p class="eyebrow">Device</p>
             <h2 id="device-title">Device</h2>
           </div>
           <button id="notify-button" class="icon-button" type="button" title="Enable notifications" aria-label="Enable notifications">
@@ -77,27 +106,6 @@
             <strong id="current-device-label">No device saved</strong>
             <p id="current-device-meta">Create a device profile to begin.</p>
           </div>
-        </div>
-
-        <form id="auth-form" class="auth-form">
-          <label>
-            Email
-            <input id="auth-email" name="email" type="email" autocomplete="email">
-          </label>
-          <label>
-            Password
-            <input id="auth-password" name="password" type="password" autocomplete="current-password" minlength="6">
-          </label>
-          <div class="button-row auth-actions">
-            <button class="primary-action" type="submit" name="authAction" value="sign-in">Sign In</button>
-            <button class="secondary-action" type="submit" name="authAction" value="create">Create</button>
-            <button id="sign-out-button" class="text-button" type="button">Sign Out</button>
-          </div>
-        </form>
-
-        <div class="auth-card" aria-live="polite">
-          <strong id="auth-label">Local mode</strong>
-          <p id="auth-meta">Firebase config not loaded.</p>
         </div>
       </section>
 
