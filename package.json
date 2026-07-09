@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "firebase:config": "node tools/build-firebase-config.mjs",
+    "build:hosting": "node tools/build-hosting.mjs",
+    "build": "npm run firebase:config && npm run build:hosting",
+    "deploy": "npm run build && firebase deploy --only hosting,database --project n-relay-bridge-db",
     "serve": "node tools/dev-server.mjs",
-    "check": "node --check src/app.js && node --check src/firebase-client.js && node --check sw.js && node --check tools/build-firebase-config.mjs && node --check tools/dev-server.mjs && node --check tools/env-utils.mjs"
+    "check": "node --check src/app.js && node --check src/firebase-client.js && node --check sw.js && node --check tools/build-firebase-config.mjs && node --check tools/build-hosting.mjs && node --check tools/dev-server.mjs && node --check tools/env-utils.mjs"
   }
 }

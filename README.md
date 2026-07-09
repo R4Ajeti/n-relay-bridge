@@ -89,6 +89,22 @@ http://localhost:4173/health
 
 The health endpoint checks both Realtime Database reachability and whether Firebase Email/Password Auth is enabled.
 
+## Deploy
+
+Deploy to Firebase Hosting and release Realtime Database rules:
+
+```bash
+npm run deploy
+```
+
+Live Firebase Hosting URL:
+
+```text
+https://n-relay-bridge-db.web.app
+```
+
+The `/health` endpoint is local-only because Firebase Hosting serves the static PWA.
+
 ## Run Locally
 
 Start a static server from the project root:
