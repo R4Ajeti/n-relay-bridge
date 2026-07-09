@@ -19,8 +19,10 @@ The idea is simple: prepare a message on one device, open it on another device, 
 Current flow:
 
 - Users must register or sign in before using device and message actions.
-- Android works as the control device.
-- iOS works as the sender device.
+- Multiple devices can work as control devices.
+- A sender device receives assigned message requests.
+- Control devices default new requests to the most recently seen sender device.
+- A notification-enabled control device is treated as both control and sender-capable.
 - The sender device can enable browser notifications after login.
 - The sender opens WhatsApp, Viber, or SMS/iMessage with the message prepared where supported.
 - The user manually taps Send inside the external app.
@@ -33,6 +35,8 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Service worker with offline fallback.
 - Local device profile and added-device list.
 - Message request composer.
+- Sender-first request targeting for multi-controller accounts.
+- Automatic sender-capable role for devices with notification permission.
 - Pending request list for the sender device.
 - Firebase email/password login.
 - Realtime Database sync for saved devices and message requests.
@@ -96,6 +100,8 @@ To get a phone popup for a newly arrived message request:
 - Tap **Enable Notifications** on the phone and accept the browser/OS prompt.
 - Tap **Test Notification**. A visible test notification must appear on that phone before request notifications can work.
 - On the controller device, create the request and select the sender option with the same phone `#xxxxxx` suffix.
+- Multiple controller devices can use the same account. They should all default to the most recently seen sender device.
+- If a control device has notifications enabled, it is saved as sender-capable too, so it can still control and receive assigned request popups.
 - Keep the sender PWA open or recently active so it can sync Firebase and display the popup.
 
 When another signed-in device creates a message request for that sender device:
@@ -173,6 +179,9 @@ Current verification:
 - The Device panel includes the added-device list, and no manual device-add form is served.
 - The desktop workspace keeps Device, Control, and Sync on the left while Pending Requests owns the full right column.
 - Hidden authenticated screens stay hidden while the sign-in screen is active.
+- New requests default to sender-capable devices and do not silently fall back to controllers.
+- Notification-enabled control devices become sender-capable and can receive assigned request popups.
+- Web controllers refresh their default target to the newest sender-capable device unless the user manually changes the sender field.
 
 ## Project Structure
 

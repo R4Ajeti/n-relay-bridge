@@ -21,6 +21,8 @@ const CHANNEL_LABELS = {
   sms: "SMS/iMessage"
 };
 
+const DEVICE_STALE_MS = 24 * 60 * 60 * 1000;
+
 const selectors = {
   appVersion: document.querySelector("#app-version"),
   swStatus: document.querySelector("#sw-status"),
@@ -43,6 +45,7 @@ const selectors = {
   authMeta: document.querySelector("#auth-meta"),
   deviceList: document.querySelector("#device-list"),
   requestForm: document.querySelector("#request-form"),
+  requestSubmitButton: document.querySelector("#request-form button[type='submit']"),
   recipient: document.querySelector("#recipient"),
   channel: document.querySelector("#channel"),
   targetDevice: document.querySelector("#target-device"),
@@ -66,6 +69,8 @@ let state = {
   firebaseAuth: load(STORAGE.firebaseAuth, null),
   notifiedRequests: load(STORAGE.notifiedRequests, {})
 };
+
+let targetDeviceManuallySelected = false;
 
 const firebaseRuntime = {
   config: null,
@@ -172,6 +177,7 @@ function ensureDefaults() {
 }
 
 function render() {
+  normalizeNotificationReceiverRole();
   renderProfile();
   renderAuth();
   renderDevices();
@@ -231,6 +237,7 @@ function renderAuth() {
 
 function renderAccess() {
   const signedIn = isSignedIn();
+  const hasSenderTarget = getSenderTargetDevices().length > 0;
   const gatedControls = [
     ...selectors.profileForm.elements,
     selectors.notifyButton,
@@ -260,10 +267,13 @@ function renderAccess() {
 
     control.disabled = !signedIn;
   });
+
+  selectors.targetDevice.disabled = !signedIn || !hasSenderTarget;
+  selectors.requestSubmitButton.disabled = !signedIn || !hasSenderTarget;
 }
 
 function renderDevices() {
-  const addedDevices = state.devices.filter((device) => device.id !== state.profile.deviceId);
+  const addedDevices = sortDevices(state.devices.filter((device) => device.id !== state.profile.deviceId));
 
   if (addedDevices.length === 0) {
     selectors.deviceList.innerHTML = `<div class="empty-state">No other added devices.</div>`;
@@ -274,7 +284,7 @@ function renderDevices() {
     <article class="list-item">
       <div>
         <strong>${escapeHtml(device.name)}</strong>
-        <p>${escapeHtml(device.platform.toUpperCase())} / ${escapeHtml(device.role || "sender")} / device #${escapeHtml(shortId(device.id))}${device.source === "manual" ? " / manual" : ""}</p>
+        <p>${escapeHtml(deviceMeta(device))}</p>
       </div>
       <button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>
     </article>
@@ -282,13 +292,23 @@ function renderDevices() {
 }
 
 function renderTargetOptions() {
-  const senderDevices = state.devices.filter((device) => ["sender", "both"].includes(device.role || "sender"));
-  const devices = senderDevices.length ? senderDevices : state.devices;
-  const options = devices.map((device) => `
-    <option value="${device.id}">${escapeHtml(device.name)} (${escapeHtml(device.platform)} #${escapeHtml(shortId(device.id))}${device.source === "manual" ? " manual" : ""})</option>
+  const previousTargetId = selectors.targetDevice.value;
+  const senderDevices = getSenderTargetDevices();
+
+  if (senderDevices.length === 0) {
+    selectors.targetDevice.innerHTML = `<option value="">No sender device saved</option>`;
+    selectors.targetDevice.value = "";
+    return;
+  }
+
+  const options = senderDevices.map((device) => `
+    <option value="${device.id}">${escapeHtml(senderOptionLabel(device))}</option>
   `);
 
   selectors.targetDevice.innerHTML = options.join("");
+  selectors.targetDevice.value = targetDeviceManuallySelected && senderDevices.some((device) => device.id === previousTargetId)
+    ? previousTargetId
+    : senderDevices[0].id;
 }
 
 function renderRequests() {
@@ -347,6 +367,86 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function getSenderTargetDevices() {
+  return sortDevices(state.devices.filter((device) => ["sender", "both"].includes(device.role || "sender")));
+}
+
+function sortDevices(devices) {
+  return [...devices].sort((a, b) => {
+    const timeRank = getDeviceTime(b) - getDeviceTime(a);
+    if (timeRank !== 0) return timeRank;
+
+    const roleRank = rolePriority(a) - rolePriority(b);
+    if (roleRank !== 0) return roleRank;
+
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+}
+
+function rolePriority(device) {
+  const role = device.role || "sender";
+  if (role === "sender") return 0;
+  if (role === "both") return 1;
+  return 2;
+}
+
+function getDeviceTime(device) {
+  return Date.parse(device.lastSeenAt || device.updatedAt || device.createdAt || "") || 0;
+}
+
+function deviceMeta(device) {
+  const parts = [
+    String(device.platform || "other").toUpperCase(),
+    device.role || "sender",
+    `device #${shortId(device.id)}`,
+    deviceFreshnessLabel(device)
+  ];
+
+  if (device.source === "manual") {
+    parts.push("manual");
+  }
+
+  return parts.filter(Boolean).join(" / ");
+}
+
+function senderOptionLabel(device) {
+  return `${device.name} (${device.platform || "other"} #${shortId(device.id)}, ${deviceFreshnessLabel(device)})`;
+}
+
+function deviceFreshnessLabel(device) {
+  const timestamp = getDeviceTime(device);
+  if (!timestamp) return "not seen yet";
+
+  const elapsed = Date.now() - timestamp;
+  const relative = formatElapsed(elapsed);
+  return elapsed > DEVICE_STALE_MS ? `stale ${relative}` : `seen ${relative}`;
+}
+
+function formatElapsed(elapsed) {
+  if (elapsed < 2 * 60 * 1000) return "just now";
+  if (elapsed < 60 * 60 * 1000) return `${Math.round(elapsed / 60000)}m ago`;
+  if (elapsed < 24 * 60 * 60 * 1000) return `${Math.round(elapsed / 3600000)}h ago`;
+  return `${Math.round(elapsed / 86400000)}d ago`;
+}
+
+function normalizeNotificationReceiverRole() {
+  if (!isSignedIn() || !("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  if (state.profile.role !== "control") {
+    return;
+  }
+
+  state.profile = {
+    ...state.profile,
+    role: "both",
+    updatedAt: now()
+  };
+  upsertCurrentDevice();
+  save();
 }
 
 async function copyText(value, successMessage) {
@@ -516,6 +616,11 @@ function handleRequestSubmit(event) {
 
   if (!requireSignIn()) return;
 
+  if (!selectors.targetDevice.value) {
+    toast("Save a sender device first");
+    return;
+  }
+
   const request = {
     id: uid("request"),
     userId: state.profile.accountId,
@@ -530,6 +635,7 @@ function handleRequestSubmit(event) {
   };
 
   state.requests.push(request);
+  targetDeviceManuallySelected = false;
   selectors.requestForm.reset();
   selectors.channel.value = request.channel;
   save();
@@ -1003,6 +1109,9 @@ function bindEvents() {
   selectors.profileForm.addEventListener("submit", handleProfileSubmit);
   selectors.authForm.addEventListener("submit", handleAuthSubmit);
   selectors.signOutButton.addEventListener("click", handleSignOut);
+  selectors.targetDevice.addEventListener("change", () => {
+    targetDeviceManuallySelected = true;
+  });
   selectors.requestForm.addEventListener("submit", handleRequestSubmit);
   selectors.deviceList.addEventListener("click", handleDeviceListClick);
   selectors.requestList.addEventListener("click", handleRequestListClick);
