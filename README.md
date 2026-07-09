@@ -83,7 +83,7 @@ Verification:
 - Local server returned `200 OK` for `/`, `/manifest.webmanifest`, and `/sw.js`.
 - Browser verification confirmed the main UI renders, creates a request, and generates WhatsApp, Viber, and SMS links.
 - Mobile viewport check at 390px wide reported no horizontal overflow.
-- Current Git status shows the new project files as untracked.
+- Git status was inspected during implementation.
 
 ### Prompt 0002
 
@@ -97,6 +97,7 @@ Verification:
 
 - Confirmed there was no existing `.gitignore` before adding the new file.
 - Preserved lockfiles as trackable for reproducible JavaScript installs.
+- Checked ignore behavior for `.env`, `.env.local`, `node_modules`, `dist`, and `coverage`.
 
 ## Next Recommended Work
 
