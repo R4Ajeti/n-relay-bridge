@@ -192,6 +192,24 @@ h3 {
   box-shadow: 0 10px 28px rgb(31 45 43 / 7%);
 }
 
+.app-shell.is-locked .gated-panel {
+  opacity: 0.58;
+}
+
+.app-shell.is-locked .gated-panel::after {
+  display: block;
+  margin-top: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  padding: 12px;
+  content: "Sign in to use this section.";
+  font-size: 0.86rem;
+  font-weight: 700;
+  text-align: center;
+}
+
 .compose-panel,
 .pending-panel {
   grid-row: span 2;

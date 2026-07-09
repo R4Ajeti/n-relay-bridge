@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "firebase:config": "node tools/build-firebase-config.mjs",
-    "serve": "python3 -m http.server 4173",
-    "check": "node --check src/app.js && node --check src/firebase-client.js && node --check sw.js && node --check tools/build-firebase-config.mjs"
+    "serve": "node tools/dev-server.mjs",
+    "check": "node --check src/app.js && node --check src/firebase-client.js && node --check sw.js && node --check tools/build-firebase-config.mjs && node --check tools/dev-server.mjs && node --check tools/env-utils.mjs"
   }
 }

@@ -18,6 +18,7 @@ The idea is simple: prepare a message on one device, open it on another device, 
 
 Current flow:
 
+- Users must register or sign in before using device and message actions.
 - Android works as the control device.
 - iOS works as the sender device.
 - The sender opens WhatsApp, Viber, or SMS/iMessage with the message prepared where supported.
@@ -59,7 +60,7 @@ Create a Firebase project with Authentication email/password enabled and Realtim
 N_RELAY_FIREBASE_WEB_CONFIG_BASE64
 ```
 
-For local setup, copy `.env.example` to `.env` and fill in the value.
+For local setup, copy `env_example` to `.env` and fill in the value.
 
 Do not use Firebase Admin SDK or service-account JSON in the PWA.
 
@@ -77,6 +78,12 @@ users/{uid}/messageRequests
 ```
 
 Recommended Realtime Database rules are in `firebase.rules.json`.
+
+Check local Firebase setup:
+
+```text
+http://localhost:4173/health
+```
 
 ## Run Locally
 

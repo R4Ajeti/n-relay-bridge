@@ -31,8 +31,8 @@
       </div>
     </header>
 
-    <main id="main" class="app-shell">
-      <section class="panel device-panel" aria-labelledby="device-title">
+    <main id="main" class="app-shell is-locked">
+      <section class="panel device-panel auth-panel" aria-labelledby="device-title">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Account</p>
@@ -101,7 +101,7 @@
         </div>
       </section>
 
-      <section class="panel" aria-labelledby="link-title">
+      <section class="panel gated-panel" aria-labelledby="link-title">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Pairing</p>
@@ -125,7 +125,7 @@
         <div id="device-list" class="list-stack" aria-live="polite"></div>
       </section>
 
-      <section class="panel compose-panel" aria-labelledby="compose-title">
+      <section class="panel compose-panel gated-panel" aria-labelledby="compose-title">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Control</p>
@@ -158,7 +158,7 @@
         </form>
       </section>
 
-      <section class="panel pending-panel" aria-labelledby="pending-title">
+      <section class="panel pending-panel gated-panel" aria-labelledby="pending-title">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Sender</p>
@@ -175,7 +175,7 @@
         <div id="request-list" class="request-list" aria-live="polite"></div>
       </section>
 
-      <section class="panel sync-panel" aria-labelledby="sync-title">
+      <section class="panel sync-panel gated-panel" aria-labelledby="sync-title">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Prototype</p>

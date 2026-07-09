@@ -54,7 +54,9 @@ const selectors = {
   syncPayload: document.querySelector("#sync-payload"),
   copyPayload: document.querySelector("#copy-payload"),
   importButton: document.querySelector("#import-button"),
-  toast: document.querySelector("#toast")
+  toast: document.querySelector("#toast"),
+  appShell: document.querySelector("#main"),
+  gatedPanels: document.querySelectorAll(".gated-panel")
 };
 
 let state = {
@@ -156,6 +158,7 @@ function ensureDefaults() {
 function render() {
   renderProfile();
   renderAuth();
+  renderAccess();
   renderDevices();
   renderTargetOptions();
   renderRequests();
@@ -206,6 +209,36 @@ function renderAuth() {
     ? "Checking Firebase config."
     : "Firebase config not generated.";
   setCloudStatus("Cloud local", "warn");
+}
+
+function renderAccess() {
+  const signedIn = isSignedIn();
+  const gatedControls = [
+    ...selectors.profileForm.elements,
+    selectors.notifyButton,
+    ...selectors.linkForm.elements,
+    ...selectors.requestForm.elements,
+    selectors.clearCompleted,
+    selectors.exportButton,
+    selectors.syncPayload,
+    selectors.copyPayload,
+    selectors.importButton,
+    ...selectors.deviceList.querySelectorAll("button"),
+    ...selectors.requestList.querySelectorAll("button, a")
+  ].filter(Boolean);
+
+  selectors.appShell.classList.toggle("is-locked", !signedIn);
+  selectors.gatedPanels.forEach((panel) => panel.setAttribute("aria-disabled", String(!signedIn)));
+
+  gatedControls.forEach((control) => {
+    if (control.tagName === "A") {
+      control.setAttribute("aria-disabled", String(!signedIn));
+      control.tabIndex = signedIn ? 0 : -1;
+      return;
+    }
+
+    control.disabled = !signedIn;
+  });
 }
 
 function renderDevices() {
@@ -380,6 +413,8 @@ function chooseNewest(localItem, remoteItem) {
 function handleProfileSubmit(event) {
   event.preventDefault();
 
+  if (!requireSignIn()) return;
+
   state.profile = {
     ...state.profile,
     accountId: state.firebaseAuth?.uid || text(selectors.accountId.value),
@@ -434,6 +469,8 @@ async function handleAuthSubmit(event) {
 
 function handleSignOut() {
   state.firebaseAuth = null;
+  state.devices = [];
+  state.requests = [];
   save({ remote: false });
   render();
   toast("Signed out");
@@ -441,6 +478,9 @@ function handleSignOut() {
 
 function handleLinkSubmit(event) {
   event.preventDefault();
+
+  if (!requireSignIn()) return;
+
   const name = text(selectors.linkedDeviceName.value);
 
   if (!name) {
@@ -469,6 +509,8 @@ function handleLinkSubmit(event) {
 function handleRequestSubmit(event) {
   event.preventDefault();
 
+  if (!requireSignIn()) return;
+
   const request = {
     id: uid("request"),
     userId: state.profile.accountId,
@@ -492,6 +534,8 @@ function handleRequestSubmit(event) {
 }
 
 function handleDeviceListClick(event) {
+  if (!requireSignIn()) return;
+
   const id = event.target.closest("[data-remove-device]")?.dataset.removeDevice;
   if (!id) return;
 
@@ -502,6 +546,11 @@ function handleDeviceListClick(event) {
 }
 
 async function handleRequestListClick(event) {
+  if (!requireSignIn()) {
+    event.preventDefault();
+    return;
+  }
+
   const copyId = event.target.closest("[data-copy-message]")?.dataset.copyMessage;
   const sentId = event.target.closest("[data-mark-sent]")?.dataset.markSent;
   const cancelId = event.target.closest("[data-cancel-request]")?.dataset.cancelRequest;
@@ -538,6 +587,8 @@ async function handleRequestListClick(event) {
 }
 
 function updateRequestStatus(id, status) {
+  if (!requireSignIn()) return;
+
   state.requests = state.requests.map((request) => (
     request.id === id ? { ...request, status, updatedAt: now() } : request
   ));
@@ -546,6 +597,8 @@ function updateRequestStatus(id, status) {
 }
 
 function clearCompleted() {
+  if (!requireSignIn()) return;
+
   state.requests = state.requests.filter((request) => !["sent_by_user", "cancelled"].includes(request.status));
   save();
   render();
@@ -566,6 +619,8 @@ function updateNotificationStatus() {
 }
 
 async function enableNotifications() {
+  if (!requireSignIn()) return;
+
   if (!("Notification" in window)) {
     toast("Notifications unsupported");
     return;
@@ -742,13 +797,21 @@ function bindEvents() {
   selectors.clearCompleted.addEventListener("click", clearCompleted);
 
   selectors.exportButton.addEventListener("click", () => {
+    if (!requireSignIn()) return;
+
     selectors.syncPayload.value = exportPayload();
     toast("Payload exported");
   });
 
-  selectors.copyPayload.addEventListener("click", () => copyText(selectors.syncPayload.value || exportPayload(), "Payload copied"));
+  selectors.copyPayload.addEventListener("click", () => {
+    if (!requireSignIn()) return;
+
+    copyText(selectors.syncPayload.value || exportPayload(), "Payload copied");
+  });
 
   selectors.importButton.addEventListener("click", () => {
+    if (!requireSignIn()) return;
+
     try {
       mergePayload(JSON.parse(selectors.syncPayload.value));
       toast("Payload imported");
@@ -765,6 +828,18 @@ function bindEvents() {
       // Ignore malformed tab sync messages.
     }
   });
+}
+
+function isSignedIn() {
+  return Boolean(state.firebaseAuth?.uid);
+}
+
+function requireSignIn() {
+  if (isSignedIn()) return true;
+
+  toast("Sign in first");
+  selectors.authEmail.focus();
+  return false;
 }
 
 function focusRequestedView() {
