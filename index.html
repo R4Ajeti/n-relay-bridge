@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#125b50">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="N Smart">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>N Smart Phone</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icons/icon.svg">
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="app-header">
+      <div class="brand-mark" aria-hidden="true">
+        <span></span>
+      </div>
+      <div>
+        <p class="eyebrow">PWA Messaging Assistant</p>
+        <h1>N Smart Phone</h1>
+      </div>
+      <div class="header-status" aria-live="polite">
+        <span id="sw-status" class="status-pill">Service worker</span>
+        <span id="notification-status" class="status-pill">Notifications</span>
+      </div>
+    </header>
+
+    <main id="main" class="app-shell">
+      <section class="panel device-panel" aria-labelledby="device-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Account</p>
+            <h2 id="device-title">Device</h2>
+          </div>
+          <button id="notify-button" class="icon-button" type="button" title="Enable notifications" aria-label="Enable notifications">
+            <span aria-hidden="true">!</span>
+          </button>
+        </div>
+
+        <form id="profile-form" class="form-grid">
+          <label>
+            Account ID
+            <input id="account-id" name="accountId" autocomplete="off" required>
+          </label>
+          <label>
+            Device name
+            <input id="device-name" name="deviceName" autocomplete="off" required>
+          </label>
+          <label>
+            Platform
+            <select id="platform" name="platform">
+              <option value="android">Android</option>
+              <option value="ios">iOS</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>
+            Role
+            <select id="role" name="role">
+              <option value="control">Control</option>
+              <option value="sender">Sender</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <button class="primary-action" type="submit">Save Device</button>
+        </form>
+
+        <div class="device-card" aria-live="polite">
+          <span class="device-dot" aria-hidden="true"></span>
+          <div>
+            <strong id="current-device-label">No device saved</strong>
+            <p id="current-device-meta">Create a device profile to begin.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="link-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Pairing</p>
+            <h2 id="link-title">Linked Devices</h2>
+          </div>
+        </div>
+
+        <form id="link-form" class="inline-form">
+          <label>
+            Device label
+            <input id="linked-device-name" name="linkedDeviceName" autocomplete="off" placeholder="iPhone Sender">
+          </label>
+          <select id="linked-device-platform" aria-label="Linked device platform">
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+            <option value="other">Other</option>
+          </select>
+          <button class="secondary-action" type="submit">Link</button>
+        </form>
+
+        <div id="device-list" class="list-stack" aria-live="polite"></div>
+      </section>
+
+      <section class="panel compose-panel" aria-labelledby="compose-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Control</p>
+            <h2 id="compose-title">New Request</h2>
+          </div>
+        </div>
+
+        <form id="request-form" class="form-grid">
+          <label>
+            Recipient
+            <input id="recipient" name="recipient" inputmode="tel" autocomplete="tel" placeholder="+15551234567" required>
+          </label>
+          <label>
+            Channel
+            <select id="channel" name="channel">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="viber">Viber</option>
+              <option value="sms">SMS/iMessage</option>
+            </select>
+          </label>
+          <label>
+            Sender device
+            <select id="target-device" name="targetDevice"></select>
+          </label>
+          <label class="wide-field">
+            Message
+            <textarea id="message" name="message" rows="5" maxlength="900" required></textarea>
+          </label>
+          <button class="primary-action wide-button" type="submit">Create Request</button>
+        </form>
+      </section>
+
+      <section class="panel pending-panel" aria-labelledby="pending-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Sender</p>
+            <h2 id="pending-title">Pending</h2>
+          </div>
+          <button id="clear-completed" class="text-button" type="button">Clear Done</button>
+        </div>
+
+        <div class="manual-send-banner">
+          <strong>Manual send required.</strong>
+          <span>The external app must show the final send button.</span>
+        </div>
+
+        <div id="request-list" class="request-list" aria-live="polite"></div>
+      </section>
+
+      <section class="panel sync-panel" aria-labelledby="sync-title">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Prototype</p>
+            <h2 id="sync-title">Sync</h2>
+          </div>
+          <button id="export-button" class="secondary-action" type="button">Export</button>
+        </div>
+
+        <label>
+          Payload
+          <textarea id="sync-payload" rows="7" spellcheck="false"></textarea>
+        </label>
+        <div class="button-row">
+          <button id="copy-payload" class="secondary-action" type="button">Copy</button>
+          <button id="import-button" class="primary-action" type="button">Import</button>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="/src/app.js" type="module"></script>
+  </body>
+</html>

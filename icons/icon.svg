@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">N Smart Phone</title>
+  <rect width="512" height="512" rx="96" fill="#125b50"/>
+  <path d="M164 98h184c28 0 50 22 50 50v216c0 28-22 50-50 50H164c-28 0-50-22-50-50V148c0-28 22-50 50-50Z" fill="#f7f4ed"/>
+  <path d="M170 154h172c10 0 18 8 18 18v116c0 10-8 18-18 18h-76l-54 48v-48h-42c-10 0-18-8-18-18V172c0-10 8-18 18-18Z" fill="#1d9485"/>
+  <path d="M194 204h124M194 244h92" stroke="#f7f4ed" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="256" cy="365" r="18" fill="#125b50"/>
+</svg>
