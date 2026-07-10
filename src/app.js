@@ -5,7 +5,7 @@ import {
   refreshFirebaseSession,
   signInWithEmailPassword,
   writeRealtimePath
-} from "./firebase-client.js";
+} from "./firebase-client.js?v=__APP_VERSION__";
 
 const STORAGE = {
   profile: "nsp.profile",
@@ -21,7 +21,9 @@ const CHANNEL_LABELS = {
   sms: "SMS/iMessage"
 };
 
+const DEVICE_ROLES = new Set(["control", "sender", "both"]);
 const DEVICE_STALE_MS = 24 * 60 * 60 * 1000;
+const DEVICE_NOTIFICATION_READY_MS = 2 * 60 * 1000;
 
 const selectors = {
   appVersion: document.querySelector("#app-version"),
@@ -48,6 +50,8 @@ const selectors = {
   requestSubmitButton: document.querySelector("#request-form button[type='submit']"),
   recipient: document.querySelector("#recipient"),
   channel: document.querySelector("#channel"),
+  senderAvailability: document.querySelector("#sender-availability"),
+  senderAvailabilityLabel: document.querySelector("#sender-availability-label"),
   targetDevice: document.querySelector("#target-device"),
   message: document.querySelector("#message"),
   requestList: document.querySelector("#request-list"),
@@ -71,6 +75,7 @@ let state = {
 };
 
 let targetDeviceManuallySelected = false;
+let profileFormDirty = false;
 
 const firebaseRuntime = {
   config: null,
@@ -79,7 +84,11 @@ const firebaseRuntime = {
   saveTimer: null,
   pushing: false,
   syncing: false,
-  pollTimer: null
+  pollTimer: null,
+  dirtyDeviceIds: new Set(),
+  dirtyRequestIds: new Set(),
+  deletedDeviceIds: new Set(),
+  deletedRequestIds: new Set()
 };
 
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("nsp-sync") : null;
@@ -155,18 +164,28 @@ function detectPlatform() {
   return "other";
 }
 
+function currentNotificationPermission() {
+  return "Notification" in window ? Notification.permission : "unsupported";
+}
+
 function ensureDefaults() {
   if (!state.profile) {
+    const deviceId = uid("device");
+    const platform = detectPlatform();
+
     state.profile = {
-      deviceId: uid("device"),
+      deviceId,
       accountId: state.firebaseAuth?.uid || `acct-${Math.random().toString(36).slice(2, 8)}`,
-      deviceName: detectPlatform() === "ios" ? "iPhone Sender" : "Android Control",
-      platform: detectPlatform(),
-      role: detectPlatform() === "ios" ? "sender" : "control",
+      deviceName: defaultDeviceName(platform, deviceId),
+      platform,
+      role: "control",
+      roleExplicit: false,
       createdAt: now(),
       updatedAt: now()
     };
   }
+
+  recoverLegacyCurrentDeviceRole();
 
   if (state.firebaseAuth?.uid) {
     state.profile.accountId = state.firebaseAuth.uid;
@@ -177,11 +196,11 @@ function ensureDefaults() {
 }
 
 function render() {
-  normalizeNotificationReceiverRole();
   renderProfile();
   renderAuth();
   renderDevices();
   renderTargetOptions();
+  renderSenderAvailability();
   renderRequests();
   renderAccess();
   updateNotificationStatus();
@@ -191,9 +210,13 @@ function renderProfile() {
   const { profile } = state;
   selectors.accountId.value = profile.accountId;
   selectors.accountId.disabled = Boolean(state.firebaseAuth?.uid);
-  selectors.deviceName.value = profile.deviceName;
-  selectors.platform.value = profile.platform;
-  selectors.role.value = profile.role;
+
+  if (!profileFormDirty) {
+    selectors.deviceName.value = profile.deviceName;
+    selectors.platform.value = profile.platform;
+    selectors.role.value = profile.role;
+  }
+
   selectors.currentDeviceLabel.textContent = profile.deviceName;
   selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / device #${shortId(profile.deviceId)}`;
 }
@@ -273,22 +296,34 @@ function renderAccess() {
 }
 
 function renderDevices() {
-  const addedDevices = sortDevices(state.devices.filter((device) => device.id !== state.profile.deviceId));
+  const savedDevices = sortDevices(state.devices.filter(isSavedDeviceRecord));
 
-  if (addedDevices.length === 0) {
-    selectors.deviceList.innerHTML = `<div class="empty-state">No other added devices.</div>`;
+  if (savedDevices.length === 0) {
+    selectors.deviceList.innerHTML = `<div class="empty-state">No saved devices.</div>`;
     return;
   }
 
-  selectors.deviceList.innerHTML = addedDevices.map((device) => `
-    <article class="list-item">
+  selectors.deviceList.innerHTML = savedDevices.map((device) => {
+    const isCurrentDevice = device.id === state.profile.deviceId;
+
+    return `
+    <article class="list-item${isCurrentDevice ? " is-current-device" : ""}">
       <div>
         <strong>${escapeHtml(device.name)}</strong>
         <p>${escapeHtml(deviceMeta(device))}</p>
       </div>
-      <button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>
+      ${isCurrentDevice
+        ? `<span class="tag ready">Current device</span>`
+        : `<button class="text-button" type="button" data-remove-device="${device.id}">Remove</button>`}
     </article>
-  `).join("");
+  `;
+  }).join("");
+}
+
+function isSavedDeviceRecord(device) {
+  return device.roleExplicit === true || (
+    device.role === "sender" && device.platform === "android"
+  );
 }
 
 function renderTargetOptions() {
@@ -309,6 +344,32 @@ function renderTargetOptions() {
   selectors.targetDevice.value = targetDeviceManuallySelected && senderDevices.some((device) => device.id === previousTargetId)
     ? previousTargetId
     : senderDevices[0].id;
+}
+
+function renderSenderAvailability() {
+  const device = getSenderTargetDevices().find((item) => item.id === selectors.targetDevice.value) || null;
+  const availability = getNotificationAvailability(device);
+
+  selectors.senderAvailability.classList.toggle("is-ready", availability.ready);
+  selectors.senderAvailability.classList.toggle("is-unavailable", !availability.ready);
+  selectors.senderAvailabilityLabel.textContent = availability.label;
+}
+
+function getNotificationAvailability(device) {
+  if (!device) {
+    return { ready: false, label: "No saved sender device" };
+  }
+
+  if (device.notificationPermission !== "granted") {
+    return { ready: false, label: `${device.name}: notifications not ready` };
+  }
+
+  const elapsed = Date.now() - getDeviceTime(device);
+  if (!getDeviceTime(device) || elapsed > DEVICE_NOTIFICATION_READY_MS) {
+    return { ready: false, label: `${device.name}: sender offline` };
+  }
+
+  return { ready: true, label: `${device.name}: notifications ready` };
 }
 
 function renderRequests() {
@@ -370,7 +431,25 @@ function escapeHtml(value) {
 }
 
 function getSenderTargetDevices() {
-  return sortDevices(state.devices.filter((device) => ["sender", "both"].includes(device.role || "sender")));
+  return sortDevices(state.devices.filter(isSavedSenderDevice));
+}
+
+function isSavedSenderDevice(device) {
+  const role = normalizeDeviceRole(device.role);
+
+  if (device.roleExplicit === false || role === "control") {
+    return false;
+  }
+
+  if (role === "sender") {
+    return isSavedDeviceRecord(device);
+  }
+
+  if (role !== "both") {
+    return false;
+  }
+
+  return device.roleExplicit === true;
 }
 
 function sortDevices(devices) {
@@ -386,7 +465,7 @@ function sortDevices(devices) {
 }
 
 function rolePriority(device) {
-  const role = device.role || "sender";
+  const role = normalizeDeviceRole(device.role);
   if (role === "sender") return 0;
   if (role === "both") return 1;
   return 2;
@@ -399,7 +478,7 @@ function getDeviceTime(device) {
 function deviceMeta(device) {
   const parts = [
     String(device.platform || "other").toUpperCase(),
-    device.role || "sender",
+    deviceRoleLabel(device),
     `device #${shortId(device.id)}`,
     deviceFreshnessLabel(device)
   ];
@@ -409,6 +488,25 @@ function deviceMeta(device) {
   }
 
   return parts.filter(Boolean).join(" / ");
+}
+
+function deviceRoleLabel(device) {
+  const role = normalizeDeviceRole(device.role);
+
+  if (role === "both" && device.roleExplicit !== true) {
+    return "both (not saved)";
+  }
+
+  return role;
+}
+
+function normalizeDeviceRole(role) {
+  return DEVICE_ROLES.has(role) ? role : "control";
+}
+
+function defaultDeviceName(platform, deviceId) {
+  const platformName = platform === "ios" ? "iPhone" : platform === "android" ? "Android" : "Browser";
+  return `${platformName} Control #${shortId(deviceId)}`;
 }
 
 function senderOptionLabel(device) {
@@ -431,22 +529,23 @@ function formatElapsed(elapsed) {
   return `${Math.round(elapsed / 86400000)}d ago`;
 }
 
-function normalizeNotificationReceiverRole() {
-  if (!isSignedIn() || !("Notification" in window) || Notification.permission !== "granted") {
-    return;
-  }
+function recoverLegacyCurrentDeviceRole() {
+  const profile = state.profile;
+  const isLegacyDesktopPromotion = profile
+    && profile.role === "both"
+    && profile.roleExplicit == null
+    && profile.platform === "other";
 
-  if (state.profile.role !== "control") {
+  if (!isLegacyDesktopPromotion) {
     return;
   }
 
   state.profile = {
-    ...state.profile,
-    role: "both",
+    ...profile,
+    role: "control",
+    roleExplicit: false,
     updatedAt: now()
   };
-  upsertCurrentDevice();
-  save();
 }
 
 async function copyText(value, successMessage) {
@@ -461,13 +560,16 @@ async function copyText(value, successMessage) {
 }
 
 function upsertCurrentDevice() {
+  state.devices = mergeById([], state.devices);
   const index = state.devices.findIndex((device) => device.id === state.profile.deviceId);
   const currentDevice = {
     id: state.profile.deviceId,
     accountId: state.profile.accountId,
     name: state.profile.deviceName,
     platform: state.profile.platform,
-    role: state.profile.role,
+    role: normalizeDeviceRole(state.profile.role),
+    roleExplicit: state.profile.roleExplicit,
+    notificationPermission: currentNotificationPermission(),
     trusted: true,
     current: true,
     source: "self",
@@ -508,6 +610,8 @@ function mergePayload(payload, options = {}) {
 
   state.devices = mergeById(state.devices, payload.devices || []);
   state.requests = mergeById(state.requests, payload.requests || []);
+  (payload.devices || []).forEach((device) => firebaseRuntime.dirtyDeviceIds.add(device.id));
+  (payload.requests || []).forEach((request) => firebaseRuntime.dirtyRequestIds.add(request.id));
   upsertCurrentDevice();
   save();
   render();
@@ -541,19 +645,26 @@ function handleProfileSubmit(event) {
 
   if (!requireSignIn()) return;
 
+  const wasAlreadySaved = state.devices.some((device) => (
+    device.id === state.profile.deviceId && device.roleExplicit === true
+  ));
+
   state.profile = {
     ...state.profile,
     accountId: state.firebaseAuth?.uid || text(selectors.accountId.value),
     deviceName: text(selectors.deviceName.value),
     platform: selectors.platform.value,
-    role: selectors.role.value,
+    role: normalizeDeviceRole(selectors.role.value),
+    roleExplicit: true,
     updatedAt: now()
   };
 
   upsertCurrentDevice();
+  profileFormDirty = false;
+  firebaseRuntime.dirtyDeviceIds.add(state.profile.deviceId);
   save();
   render();
-  toast("Device saved");
+  toast(wasAlreadySaved ? "Device updated" : "Device saved");
 }
 
 async function handleAuthSubmit(event) {
@@ -608,10 +719,11 @@ function clearSession() {
   state.devices = [];
   state.requests = [];
   state.notifiedRequests = {};
+  profileFormDirty = false;
   save({ remote: false });
 }
 
-function handleRequestSubmit(event) {
+async function handleRequestSubmit(event) {
   event.preventDefault();
 
   if (!requireSignIn()) return;
@@ -635,12 +747,21 @@ function handleRequestSubmit(event) {
   };
 
   state.requests.push(request);
+  firebaseRuntime.dirtyRequestIds.add(request.id);
   targetDeviceManuallySelected = false;
   selectors.requestForm.reset();
   selectors.channel.value = request.channel;
   save();
   render();
   toast("Request created");
+
+  try {
+    await pushCloudState();
+  } catch (error) {
+    setCloudStatus("Cloud sync failed", "warn");
+    console.warn(error);
+    toast("Request saved locally. Cloud sync failed");
+  }
 }
 
 function handleDeviceListClick(event) {
@@ -650,6 +771,8 @@ function handleDeviceListClick(event) {
   if (!id) return;
 
   state.devices = state.devices.filter((device) => device.id !== id);
+  firebaseRuntime.dirtyDeviceIds.delete(id);
+  firebaseRuntime.deletedDeviceIds.add(id);
   save();
   render();
   toast("Device removed");
@@ -721,6 +844,7 @@ function updateRequestStatus(id, status) {
   state.requests = state.requests.map((request) => (
     request.id === id ? { ...request, status, updatedAt: now() } : request
   ));
+  firebaseRuntime.dirtyRequestIds.add(id);
   save();
   render();
 }
@@ -728,7 +852,13 @@ function updateRequestStatus(id, status) {
 function clearCompleted() {
   if (!requireSignIn()) return;
 
-  state.requests = state.requests.filter((request) => !["sent_by_user", "cancelled"].includes(request.status));
+  const doneRequestIds = state.requests
+    .filter((request) => ["sent_by_user", "cancelled"].includes(request.status))
+    .map((request) => request.id);
+
+  doneRequestIds.forEach((id) => firebaseRuntime.deletedRequestIds.add(id));
+  doneRequestIds.forEach((id) => firebaseRuntime.dirtyRequestIds.delete(id));
+  state.requests = state.requests.filter((request) => !doneRequestIds.includes(request.id));
   save();
   render();
   toast("Done requests cleared");
@@ -840,10 +970,13 @@ async function showRequestNotification(request) {
   const registration = await navigator.serviceWorker?.ready.catch(() => null);
   if (!registration) return false;
 
-  const url = `/?view=pending&request=${encodeURIComponent(request.id)}&handoff=1`;
+  const links = buildLinks(request);
+  const appUrl = `/?view=pending&request=${encodeURIComponent(request.id)}&handoff=1`;
+  const handoffUrl = links[request.channel] || "";
   const notificationOptions = buildNotificationOptions({
     body: `${CHANNEL_LABELS[request.channel]} / ${request.recipient}`,
-    url,
+    appUrl,
+    handoffUrl,
     tag: `n-smart-request-${request.id}`,
     requestId: request.id,
     channel: request.channel
@@ -863,7 +996,7 @@ async function showTestNotification() {
   try {
     await showNotificationViaWorker(registration, "N Smart notification test", buildNotificationOptions({
       body: `Android notification check for device #${shortId(state.profile.deviceId)}`,
-      url: "/?view=pending",
+      appUrl: "/?view=pending",
       tag: `n-smart-test-${Date.now()}`
     }));
   } catch (error) {
@@ -875,6 +1008,8 @@ async function showTestNotification() {
 }
 
 function buildNotificationOptions(options) {
+  const appUrl = options.appUrl || options.url || "/";
+
   return {
     body: options.body,
     icon: "/icons/icon.svg",
@@ -886,7 +1021,9 @@ function buildNotificationOptions(options) {
     timestamp: Date.now(),
     vibrate: [180, 80, 180],
     data: {
-      url: options.url || "/",
+      url: appUrl,
+      appUrl,
+      handoffUrl: options.handoffUrl || "",
       requestId: options.requestId || "",
       channel: options.channel || ""
     }
@@ -1039,13 +1176,19 @@ async function syncCloudState(options = {}) {
     const token = await getValidFirebaseIdToken();
     const cloudState = await readRealtimePath(firebaseRuntime.config, userPath(), token);
 
-    if (cloudState?.devices) {
-      state.devices = mergeById(state.devices, Object.values(cloudState.devices));
-    }
-
-    if (cloudState?.messageRequests) {
-      state.requests = mergeById(state.requests, Object.values(cloudState.messageRequests));
-    }
+    state.devices = mergeCloudItems({
+      localItems: state.devices,
+      cloudItems: Object.values(cloudState?.devices || {}),
+      dirtyIds: firebaseRuntime.dirtyDeviceIds,
+      deletedIds: firebaseRuntime.deletedDeviceIds,
+      preserveId: state.profile.deviceId
+    });
+    state.requests = mergeCloudItems({
+      localItems: state.requests,
+      cloudItems: Object.values(cloudState?.messageRequests || {}),
+      dirtyIds: firebaseRuntime.dirtyRequestIds,
+      deletedIds: firebaseRuntime.deletedRequestIds
+    });
 
     state.profile.accountId = state.firebaseAuth.uid;
     upsertCurrentDevice();
@@ -1061,6 +1204,7 @@ async function syncCloudState(options = {}) {
     if (push) {
       await pushCloudState();
     } else {
+      await pushCurrentDeviceHeartbeat(token);
       setCloudStatus("Cloud synced", "ready");
     }
   } finally {
@@ -1078,27 +1222,97 @@ async function pushCloudState() {
 
   try {
     const token = await getValidFirebaseIdToken();
-    await writeRealtimePath(firebaseRuntime.config, userPath(), token, serializeCloudState(), "PUT");
+    const changedDeviceIds = new Set(firebaseRuntime.dirtyDeviceIds);
+    const changedRequestIds = new Set(firebaseRuntime.dirtyRequestIds);
+    const deletedDeviceIds = new Set(firebaseRuntime.deletedDeviceIds);
+    const deletedRequestIds = new Set(firebaseRuntime.deletedRequestIds);
+    const patch = serializeCloudPatch({
+      changedDeviceIds,
+      changedRequestIds,
+      deletedDeviceIds,
+      deletedRequestIds
+    });
+
+    await writeRealtimePath(firebaseRuntime.config, userPath(), token, patch, "PATCH");
+    changedDeviceIds.forEach((id) => firebaseRuntime.dirtyDeviceIds.delete(id));
+    changedRequestIds.forEach((id) => firebaseRuntime.dirtyRequestIds.delete(id));
+    deletedDeviceIds.forEach((id) => firebaseRuntime.deletedDeviceIds.delete(id));
+    deletedRequestIds.forEach((id) => firebaseRuntime.deletedRequestIds.delete(id));
     setCloudStatus("Cloud synced", "ready");
   } finally {
     firebaseRuntime.pushing = false;
   }
 }
 
-function serializeCloudState() {
-  return {
+function serializeCloudPatch(changes) {
+  const patch = {
     account: {
       uid: state.firebaseAuth.uid,
       email: state.firebaseAuth.email || "",
       updatedAt: now()
-    },
-    devices: objectById(state.devices),
-    messageRequests: objectById(state.requests)
+    }
   };
+
+  changes.changedDeviceIds.forEach((id) => {
+    const device = state.devices.find((item) => item.id === id);
+    if (device && shouldSyncDevice(device)) {
+      patch[`devices/${id}`] = device;
+    }
+  });
+
+  changes.changedRequestIds.forEach((id) => {
+    const request = state.requests.find((item) => item.id === id);
+    if (request) {
+      patch[`messageRequests/${id}`] = request;
+    }
+  });
+
+  changes.deletedDeviceIds.forEach((id) => {
+    patch[`devices/${id}`] = null;
+  });
+
+  changes.deletedRequestIds.forEach((id) => {
+    patch[`messageRequests/${id}`] = null;
+  });
+
+  return patch;
 }
 
-function objectById(items) {
-  return Object.fromEntries(items.filter((item) => item.id).map((item) => [item.id, item]));
+function mergeCloudItems({ localItems, cloudItems, dirtyIds, deletedIds, preserveId = "" }) {
+  const localPendingItems = localItems.filter((item) => (
+    item.id === preserveId || (dirtyIds.has(item.id) && !deletedIds.has(item.id))
+  ));
+
+  return mergeById(localPendingItems, cloudItems);
+}
+
+function shouldSyncDevice(device) {
+  return isSavedDeviceRecord(device);
+}
+
+async function pushCurrentDeviceHeartbeat(token) {
+  const currentDevice = state.devices.find((device) => device.id === state.profile.deviceId);
+  if (!currentDevice || !isSavedSenderDevice(currentDevice)) {
+    return;
+  }
+
+  const heartbeat = {
+    ...currentDevice,
+    notificationPermission: currentNotificationPermission(),
+    lastSeenAt: now(),
+    updatedAt: now()
+  };
+
+  state.devices = state.devices.map((device) => (
+    device.id === heartbeat.id ? heartbeat : device
+  ));
+  await writeRealtimePath(
+    firebaseRuntime.config,
+    `${userPath()}/devices/${heartbeat.id}`,
+    token,
+    heartbeat,
+    "PUT"
+  );
 }
 
 function userPath() {
@@ -1106,11 +1320,18 @@ function userPath() {
 }
 
 function bindEvents() {
+  selectors.profileForm.addEventListener("input", () => {
+    profileFormDirty = true;
+  });
+  selectors.profileForm.addEventListener("change", () => {
+    profileFormDirty = true;
+  });
   selectors.profileForm.addEventListener("submit", handleProfileSubmit);
   selectors.authForm.addEventListener("submit", handleAuthSubmit);
   selectors.signOutButton.addEventListener("click", handleSignOut);
   selectors.targetDevice.addEventListener("change", () => {
     targetDeviceManuallySelected = true;
+    renderSenderAvailability();
   });
   selectors.requestForm.addEventListener("submit", handleRequestSubmit);
   selectors.deviceList.addEventListener("click", handleDeviceListClick);
@@ -1151,8 +1372,32 @@ function bindEvents() {
     }
   });
 
+  navigator.serviceWorker?.addEventListener("message", (event) => {
+    if (event.data?.type !== "notification-clicked") return;
+
+    const request = state.requests.find((item) => item.id === event.data.requestId);
+    if (!request || !isCurrentDeviceTarget(request) || request.status !== "pending") return;
+
+    updateRequestStatus(request.id, "opened");
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible" || !isSignedIn()) return;
+
+    syncCloudState({ notify: true, push: false }).catch((error) => {
+      setCloudStatus("Cloud sync failed", "warn");
+      console.warn(error);
+    });
+  });
+
+  window.addEventListener("offline", () => {
+    if (isSignedIn()) {
+      setCloudStatus("Cloud offline", "warn");
+    }
+  });
+
+  window.addEventListener("online", () => {
+    if (!isSignedIn()) return;
 
     syncCloudState({ notify: true, push: false }).catch((error) => {
       setCloudStatus("Cloud sync failed", "warn");

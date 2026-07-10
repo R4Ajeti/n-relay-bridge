@@ -37,9 +37,9 @@ for (const file of requiredFiles) {
   const target = path.join(distDir, file);
   await mkdir(path.dirname(target), { recursive: true });
 
-  if (file === "sw.js") {
-    const serviceWorker = await readFile(source, "utf8");
-    await writeFile(target, serviceWorker.replaceAll("__APP_VERSION__", packageJson.version), "utf8");
+  if (["index.html", "src/app.js", "sw.js"].includes(file)) {
+    const versionedFile = await readFile(source, "utf8");
+    await writeFile(target, versionedFile.replaceAll("__APP_VERSION__", packageJson.version), "utf8");
     continue;
   }
 

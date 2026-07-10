@@ -271,8 +271,13 @@ h3 {
 .pending-panel {
   display: flex;
   grid-area: pending;
-  min-height: max(560px, calc(100vh - 132px));
+  height: min(760px, calc(100vh - 132px));
+  min-height: 560px;
+  max-height: calc(100vh - 132px);
   flex-direction: column;
+  position: sticky;
+  top: 16px;
+  overflow: hidden;
 }
 
 .sync-panel {
@@ -296,6 +301,41 @@ h3 {
 
 .compose-panel .form-grid {
   grid-template-columns: 1fr;
+}
+
+.sender-availability {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.availability-bulb {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  border: 2px solid #b08112;
+  border-radius: 999px;
+  background: var(--warning-soft);
+}
+
+.sender-availability.is-ready {
+  border-color: #a5d8cf;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.sender-availability.is-ready .availability-bulb {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgb(18 91 80 / 14%);
 }
 
 .auth-form {
@@ -463,7 +503,10 @@ textarea:focus {
 
 .pending-panel .request-list {
   flex: 1;
+  min-height: 0;
   align-content: start;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .list-stack {
@@ -478,6 +521,16 @@ textarea:focus {
 }
 
 .list-item button {
+  flex: 0 0 auto;
+}
+
+.list-item.is-current-device {
+  border-color: #a5d8cf;
+  background: var(--accent-soft);
+}
+
+.list-item.is-current-device .tag {
+  align-self: center;
   flex: 0 0 auto;
 }
 
@@ -598,7 +651,11 @@ textarea:focus {
   }
 
   .pending-panel {
+    height: auto;
     min-height: 0;
+    max-height: none;
+    position: static;
+    overflow: visible;
   }
 }
 

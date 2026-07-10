@@ -11,7 +11,7 @@
     <link rel="manifest" href="/manifest.webmanifest">
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icons/icon.svg">
-    <link rel="stylesheet" href="/src/styles.css">
+    <link rel="stylesheet" href="/src/styles.css?v=__APP_VERSION__">
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -108,7 +108,7 @@
         </div>
 
         <div class="device-list-section">
-          <h3>Added Devices</h3>
+          <h3>Saved Devices</h3>
           <div id="device-list" class="list-stack" aria-live="polite"></div>
         </div>
       </section>
@@ -134,6 +134,10 @@
               <option value="sms">SMS/iMessage</option>
             </select>
           </label>
+          <div id="sender-availability" class="sender-availability is-unavailable" role="status" aria-live="polite">
+            <span class="availability-bulb" aria-hidden="true"></span>
+            <span id="sender-availability-label">No saved sender device</span>
+          </div>
           <label>
             Sender device
             <select id="target-device" name="targetDevice"></select>
@@ -185,6 +189,6 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="/src/app.js" type="module"></script>
+    <script src="/src/app.js?v=__APP_VERSION__" type="module"></script>
   </body>
 </html>
