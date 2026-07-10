@@ -17,6 +17,11 @@ N_RELAY_FIREBASE_WEB_CONFIG_BASE64=
 # Optional: override where the generated browser config is written.
 # N_RELAY_FIREBASE_CONFIG_OUTPUT=src/firebase-config.generated.json
 
+# Optional: public VAPID key used by browsers to create Web Push subscriptions.
+# Required for locked iOS Home Screen notifications.
+# Generate with: npm run webpush:keys
+N_RELAY_WEB_PUSH_PUBLIC_KEY=
+
 # Optional: enable an authenticated /health read/write smoke test.
 # Use a normal Firebase Auth test user, not an admin account.
 # N_RELAY_FIREBASE_HEALTH_EMAIL=health@example.com

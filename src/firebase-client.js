@@ -87,7 +87,8 @@ function normalizeConfig(config) {
 
   return {
     ...config,
-    databaseURL: config.databaseURL.replace(/\/+$/, "")
+    databaseURL: config.databaseURL.replace(/\/+$/, ""),
+    webPushPublicKey: typeof config.webPushPublicKey === "string" ? config.webPushPublicKey : ""
   };
 }
 

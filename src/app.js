@@ -24,6 +24,8 @@ const CHANNEL_LABELS = {
 const DEVICE_ROLES = new Set(["control", "sender", "both"]);
 const DEVICE_STALE_MS = 24 * 60 * 60 * 1000;
 const DEVICE_NOTIFICATION_READY_MS = 2 * 60 * 1000;
+const WEB_PUSH_MODE = "web-push";
+const LOCAL_NOTIFICATION_MODE = "local";
 
 const selectors = {
   appVersion: document.querySelector("#app-version"),
@@ -160,12 +162,54 @@ function detectPlatform() {
   const ua = navigator.userAgent.toLowerCase();
 
   if (ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return "ios";
+  if (ua.includes("macintosh") && navigator.maxTouchPoints > 1) return "ios";
   if (ua.includes("android")) return "android";
   return "other";
 }
 
+function isIosPlatform() {
+  return detectPlatform() === "ios";
+}
+
+function isStandaloneDisplayMode() {
+  return window.navigator.standalone === true
+    || window.matchMedia?.("(display-mode: standalone)")?.matches
+    || window.matchMedia?.("(display-mode: fullscreen)")?.matches;
+}
+
+function currentInstallContext() {
+  if (isIosPlatform()) {
+    return isStandaloneDisplayMode() ? "ios-home-screen" : "ios-browser";
+  }
+
+  return isStandaloneDisplayMode() ? "installed" : "browser";
+}
+
+function installContextLabel(context = currentInstallContext()) {
+  const labels = {
+    "ios-home-screen": "Home Screen app",
+    "ios-browser": "Safari/browser tab",
+    installed: "installed app",
+    browser: "browser tab"
+  };
+
+  return labels[context] || "browser tab";
+}
+
+function isIosBrowserMode() {
+  return currentInstallContext() === "ios-browser";
+}
+
+function supportsPushSubscriptions() {
+  return "serviceWorker" in navigator && "PushManager" in window;
+}
+
 function currentNotificationPermission() {
   return "Notification" in window ? Notification.permission : "unsupported";
+}
+
+function notificationModeFromPermission() {
+  return currentNotificationPermission() === "granted" ? LOCAL_NOTIFICATION_MODE : "none";
 }
 
 function ensureDefaults() {
@@ -218,7 +262,7 @@ function renderProfile() {
   }
 
   selectors.currentDeviceLabel.textContent = profile.deviceName;
-  selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / device #${shortId(profile.deviceId)}`;
+  selectors.currentDeviceMeta.textContent = `${profile.platform.toUpperCase()} / ${profile.role} / ${installContextLabel()} / device #${shortId(profile.deviceId)}`;
 }
 
 function renderAuth() {
@@ -364,12 +408,20 @@ function getNotificationAvailability(device) {
     return { ready: false, label: `${device.name}: notifications not ready` };
   }
 
+  if (device.pushSubscription?.endpoint) {
+    return { ready: true, label: `${device.name}: Web Push ready` };
+  }
+
+  if (device.platform === "ios") {
+    return { ready: false, label: `${device.name}: iOS Web Push not ready` };
+  }
+
   const elapsed = Date.now() - getDeviceTime(device);
   if (!getDeviceTime(device) || elapsed > DEVICE_NOTIFICATION_READY_MS) {
     return { ready: false, label: `${device.name}: sender offline` };
   }
 
-  return { ready: true, label: `${device.name}: notifications ready` };
+  return { ready: true, label: `${device.name}: local notifications ready` };
 }
 
 function renderRequests() {
@@ -480,6 +532,8 @@ function deviceMeta(device) {
     String(device.platform || "other").toUpperCase(),
     deviceRoleLabel(device),
     `device #${shortId(device.id)}`,
+    device.installContext ? installContextLabel(device.installContext) : "",
+    deviceNotificationLabel(device),
     deviceFreshnessLabel(device)
   ];
 
@@ -488,6 +542,13 @@ function deviceMeta(device) {
   }
 
   return parts.filter(Boolean).join(" / ");
+}
+
+function deviceNotificationLabel(device) {
+  if (device.pushSubscription?.endpoint) return "web push";
+  if (device.notificationPermission === "granted") return "local notify";
+  if (device.notificationPermission === "denied") return "notifications blocked";
+  return "";
 }
 
 function deviceRoleLabel(device) {
@@ -562,6 +623,8 @@ async function copyText(value, successMessage) {
 function upsertCurrentDevice() {
   state.devices = mergeById([], state.devices);
   const index = state.devices.findIndex((device) => device.id === state.profile.deviceId);
+  const existingDevice = index >= 0 ? state.devices[index] : null;
+  const existingPushSubscription = existingDevice?.pushSubscription || null;
   const currentDevice = {
     id: state.profile.deviceId,
     accountId: state.profile.accountId,
@@ -570,6 +633,11 @@ function upsertCurrentDevice() {
     role: normalizeDeviceRole(state.profile.role),
     roleExplicit: state.profile.roleExplicit,
     notificationPermission: currentNotificationPermission(),
+    notificationMode: existingPushSubscription ? WEB_PUSH_MODE : notificationModeFromPermission(),
+    installContext: currentInstallContext(),
+    supportsPush: supportsPushSubscriptions(),
+    pushSubscription: existingPushSubscription,
+    pushSubscriptionUpdatedAt: existingDevice?.pushSubscriptionUpdatedAt || "",
     trusted: true,
     current: true,
     source: "self",
@@ -696,6 +764,7 @@ async function handleAuthSubmit(event) {
     selectors.authPassword.value = "";
     save({ remote: false });
     render();
+    await hydrateExistingPushSubscription();
     await syncCloudState({ notify: true, push: true });
     startRequestWatcher();
     focusRequestedView();
@@ -865,6 +934,15 @@ function clearCompleted() {
 }
 
 function updateNotificationStatus() {
+  if (isIosBrowserMode()) {
+    selectors.notificationStatus.textContent = "Install PWA for iOS notifications";
+    selectors.notificationStatus.className = "status-pill warn";
+    selectors.notifyButton.textContent = "Install to Home Screen";
+    selectors.notifyButton.disabled = !isSignedIn();
+    selectors.notifyButton.title = "Open this app from the iPhone Home Screen before enabling iOS notifications.";
+    return;
+  }
+
   if (!("Notification" in window)) {
     selectors.notificationStatus.textContent = "Notifications unsupported";
     selectors.notificationStatus.className = "status-pill warn";
@@ -874,18 +952,44 @@ function updateNotificationStatus() {
   }
 
   const permission = Notification.permission;
-  selectors.notificationStatus.textContent = permission === "granted" ? "Notifications ready" : `Notifications ${permission}`;
-  selectors.notificationStatus.className = permission === "granted" ? "status-pill ready" : "status-pill warn";
+  const currentDevice = getCurrentDevice();
+  const hasPushSubscription = Boolean(currentDevice?.pushSubscription?.endpoint);
+  const hasPushConfig = Boolean(firebaseRuntime.config?.webPushPublicKey);
+  const needsWebPush = isIosPlatform();
+
+  if (permission === "granted" && hasPushSubscription) {
+    selectors.notificationStatus.textContent = "Web Push ready";
+  } else if (permission === "granted" && needsWebPush && hasPushConfig) {
+    selectors.notificationStatus.textContent = "Web Push not subscribed";
+  } else if (permission === "granted" && needsWebPush) {
+    selectors.notificationStatus.textContent = "Web Push config missing";
+  } else if (permission === "granted" && hasPushConfig && supportsPushSubscriptions()) {
+    selectors.notificationStatus.textContent = "Notifications ready";
+  } else if (permission === "granted") {
+    selectors.notificationStatus.textContent = "Local notifications ready";
+  } else {
+    selectors.notificationStatus.textContent = `Notifications ${permission}`;
+  }
+
+  selectors.notificationStatus.className = permission === "granted" && (!needsWebPush || hasPushSubscription)
+    ? "status-pill ready"
+    : "status-pill warn";
   selectors.notifyButton.textContent = permission === "granted"
-    ? "Test Notification"
+    ? "Test / Sync Push"
     : permission === "denied"
       ? "Notifications Blocked"
       : "Enable Notifications";
   selectors.notifyButton.disabled = !isSignedIn() || permission === "denied";
+  selectors.notifyButton.title = "";
 }
 
 async function enableNotifications() {
   if (!requireSignIn()) return;
+
+  if (isIosBrowserMode()) {
+    toast("Open the app from the iPhone Home Screen to enable iOS notifications");
+    return;
+  }
 
   if (!("Notification" in window)) {
     toast("Notifications unsupported");
@@ -893,19 +997,151 @@ async function enableNotifications() {
   }
 
   if (Notification.permission === "granted") {
+    const subscribed = await syncPushSubscription();
     const shown = await showTestNotification();
     await syncAfterNotificationChange();
-    toast(shown ? "Test notification sent" : "Test notification unavailable");
+    toast(notificationToastMessage({ shown, subscribed }));
     return;
   }
 
   const permission = await Notification.requestPermission();
   updateNotificationStatus();
+  let subscribed = false;
+  let shown = false;
   if (permission === "granted") {
-    await showTestNotification();
+    subscribed = await syncPushSubscription();
+    shown = await showTestNotification();
     await syncAfterNotificationChange();
   }
-  toast(permission === "granted" ? "Notifications enabled. Test sent" : "Notifications not enabled");
+  toast(permission === "granted" ? notificationToastMessage({ shown, subscribed }) : "Notifications not enabled");
+}
+
+function notificationToastMessage({ shown, subscribed }) {
+  if (subscribed && isIosPlatform()) {
+    return shown
+      ? "Local test sent. Lock iPhone and create a request to test Web Push"
+      : "Web Push synced. Create a request to test locked iPhone delivery";
+  }
+
+  if (subscribed) {
+    return shown ? "Test sent. Web Push synced" : "Web Push synced";
+  }
+
+  if (isIosPlatform()) {
+    return shown ? "Local test sent. Web Push not configured" : "Web Push not configured";
+  }
+
+  return shown ? "Test notification sent" : "Test notification unavailable";
+}
+
+async function syncPushSubscription() {
+  const subscription = await ensurePushSubscription();
+  if (!subscription) {
+    updateNotificationStatus();
+    return false;
+  }
+
+  applyCurrentPushSubscription(subscription);
+  save({ remote: false });
+  updateNotificationStatus();
+  return true;
+}
+
+async function ensurePushSubscription() {
+  if (!supportsPushSubscriptions()) {
+    return null;
+  }
+
+  const publicKey = firebaseRuntime.config?.webPushPublicKey;
+  if (!publicKey) {
+    return null;
+  }
+
+  const registration = await navigator.serviceWorker?.ready.catch(() => null);
+  if (!registration?.pushManager) {
+    return null;
+  }
+
+  const existingSubscription = await registration.pushManager.getSubscription();
+  if (existingSubscription) {
+    return existingSubscription;
+  }
+
+  try {
+    return await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey)
+    });
+  } catch (error) {
+    console.warn(error);
+    return null;
+  }
+}
+
+function applyCurrentPushSubscription(subscription) {
+  const serializedSubscription = serializePushSubscription(subscription);
+  if (!serializedSubscription) return false;
+
+  upsertCurrentDevice();
+  state.devices = state.devices.map((device) => (
+    device.id === state.profile.deviceId
+      ? {
+        ...device,
+        notificationPermission: currentNotificationPermission(),
+        notificationMode: WEB_PUSH_MODE,
+        supportsPush: supportsPushSubscriptions(),
+        installContext: currentInstallContext(),
+        pushSubscription: serializedSubscription,
+        pushSubscriptionUpdatedAt: now(),
+        updatedAt: now()
+      }
+      : device
+  ));
+
+  return true;
+}
+
+function serializePushSubscription(subscription) {
+  const json = typeof subscription.toJSON === "function" ? subscription.toJSON() : subscription;
+  const endpoint = json?.endpoint;
+  const p256dh = json?.keys?.p256dh;
+  const auth = json?.keys?.auth;
+
+  if (!endpoint || !p256dh || !auth) {
+    return null;
+  }
+
+  return {
+    endpoint,
+    expirationTime: json.expirationTime ?? null,
+    keys: { p256dh, auth }
+  };
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = `${base64String}${padding}`.replaceAll("-", "+").replaceAll("_", "/");
+  const rawData = window.atob(base64);
+
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
+async function hydrateExistingPushSubscription() {
+  if (!supportsPushSubscriptions()) return;
+
+  const registration = await navigator.serviceWorker?.ready.catch(() => null);
+  const subscription = registration?.pushManager
+    ? await registration.pushManager.getSubscription().catch(() => null)
+    : null;
+  if (!subscription) return;
+
+  applyCurrentPushSubscription(subscription);
+  save({ remote: false });
+  updateNotificationStatus();
+}
+
+function getCurrentDevice() {
+  return state.devices.find((device) => device.id === state.profile.deviceId) || null;
 }
 
 async function syncAfterNotificationChange() {
@@ -950,7 +1186,13 @@ function shouldNotifyRequest(request) {
     && request.status === "pending"
     && isCurrentDeviceTarget(request)
     && request.createdByDeviceId !== state.profile.deviceId
+    && !hasDeliveredWebPush(request)
     && state.notifiedRequests[request.id] !== "shown";
+}
+
+function hasDeliveredWebPush(request) {
+  const delivery = request.notificationDelivery?.[state.profile.deviceId];
+  return delivery?.mode === WEB_PUSH_MODE && delivery?.status === "sent";
 }
 
 function isCurrentDeviceTarget(request) {
@@ -995,7 +1237,7 @@ async function showTestNotification() {
 
   try {
     await showNotificationViaWorker(registration, "N Smart notification test", buildNotificationOptions({
-      body: `Android notification check for device #${shortId(state.profile.deviceId)}`,
+      body: `${notificationTestLabel()} notification check for device #${shortId(state.profile.deviceId)}`,
       appUrl: "/?view=pending",
       tag: `n-smart-test-${Date.now()}`
     }));
@@ -1005,6 +1247,12 @@ async function showTestNotification() {
   }
 
   return true;
+}
+
+function notificationTestLabel() {
+  if (isIosPlatform()) return "iOS Home Screen";
+  const platform = detectPlatform();
+  return platform === "android" ? "Android" : "Browser";
 }
 
 function buildNotificationOptions(options) {
@@ -1043,6 +1291,8 @@ async function registerServiceWorker() {
 
   try {
     await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    await hydrateExistingPushSubscription();
     selectors.swStatus.textContent = "Service worker ready";
     selectors.swStatus.className = "status-pill ready";
   } catch {
@@ -1077,6 +1327,7 @@ async function initFirebase() {
   firebaseRuntime.config = result.config || null;
   firebaseRuntime.reason = result.reason || "";
   renderAuth();
+  updateNotificationStatus();
 
   if (!result.configured) {
     return;
@@ -1085,6 +1336,7 @@ async function initFirebase() {
   if (state.firebaseAuth?.refreshToken) {
     try {
       await getValidFirebaseIdToken();
+      await hydrateExistingPushSubscription();
       await syncCloudState({ notify: true, push: true });
       startRequestWatcher();
       focusRequestedView();
@@ -1299,6 +1551,9 @@ async function pushCurrentDeviceHeartbeat(token) {
   const heartbeat = {
     ...currentDevice,
     notificationPermission: currentNotificationPermission(),
+    notificationMode: currentDevice.pushSubscription?.endpoint ? WEB_PUSH_MODE : notificationModeFromPermission(),
+    installContext: currentInstallContext(),
+    supportsPush: supportsPushSubscriptions(),
     lastSeenAt: now(),
     updatedAt: now()
   };

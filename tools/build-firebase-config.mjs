@@ -8,6 +8,7 @@ const outputPath = process.env.N_RELAY_FIREBASE_CONFIG_OUTPUT
   || dotEnv.N_RELAY_FIREBASE_CONFIG_OUTPUT
   || "src/firebase-config.generated.json";
 const encodedConfig = getEnvValue(dotEnv, envName);
+const webPushPublicKey = getEnvValue(dotEnv, "N_RELAY_WEB_PUSH_PUBLIC_KEY");
 
 if (!encodedConfig) {
   throw new Error(`${envName} is required. See .env.example for the expected base64 JSON.`);
@@ -36,7 +37,8 @@ const browserConfig = {
   projectId: config.projectId,
   appId: config.appId,
   messagingSenderId: config.messagingSenderId || "",
-  storageBucket: config.storageBucket || ""
+  storageBucket: config.storageBucket || "",
+  webPushPublicKey
 };
 
 const resolvedOutput = path.resolve(outputPath);

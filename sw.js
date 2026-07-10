@@ -87,6 +87,11 @@ self.addEventListener("push", (event) => {
       body: payload.body,
       icon: "/icons/icon.svg",
       badge: "/icons/icon.svg",
+      requireInteraction: true,
+      renotify: true,
+      silent: false,
+      tag: payload.tag || (payload.requestId ? `n-smart-request-${payload.requestId}` : undefined),
+      timestamp: Date.now(),
       data: {
         url: payload.appUrl || payload.url || "/?view=pending",
         appUrl: payload.appUrl || payload.url || "/?view=pending",

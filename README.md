@@ -41,7 +41,8 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Pending request list for the sender device.
 - Firebase email/password login.
 - Realtime Database sync for saved devices and message requests.
-- Sender-side notifications for new assigned requests while the PWA is active.
+- Sender-side local notifications for new assigned requests while the PWA is active.
+- Optional Web Push backend for locked-device delivery to subscribed sender devices, including iOS Home Screen PWAs.
 - Notification taps that carry channel handoff metadata and fall back to the pending request.
 - WhatsApp click-to-chat handoff.
 - Viber share/forward handoff.
@@ -80,6 +81,15 @@ Generate the browser runtime config:
 npm run firebase:config
 ```
 
+For locked-device notifications, generate VAPID keys and configure Web Push:
+
+```bash
+npm run functions:install
+npm run webpush:keys
+```
+
+Put the public VAPID key in root `.env` as `N_RELAY_WEB_PUSH_PUBLIC_KEY`, then run `npm run firebase:config` again so the browser can create push subscriptions. Put the same public key, the private VAPID key, and a contact subject such as `mailto:you@example.com` in `functions/.env` using `functions/.env.example` as the template. The private key must remain server-side.
+
 The app stores user data under:
 
 ```text
@@ -91,11 +101,13 @@ Recommended Realtime Database rules are in `firebase.rules.json`.
 
 ## Notification Handoff
 
-After login, open the Android sender device, save it as a sender device, and tap **Enable Notifications**. Browsers only allow notification permission prompts from a user click, so the app cannot request this silently. After permission is granted, the same button becomes **Test Notification** so you can verify the current Android phone/browser can show PWA notifications. The test uses the same browser notification path as new assigned requests.
+After login, open the sender phone, save it as a sender device, and tap **Enable Notifications**. Browsers only allow notification permission prompts from a user click, so the app cannot request this silently. After permission is granted, the same button becomes **Test / Sync Push** so you can verify local notifications and, when VAPID keys are configured, sync a Web Push subscription for locked-device delivery.
+
+iOS has an extra platform requirement: Web Push works for web apps added to the Home Screen on iOS/iPadOS 16.4 or later. If the app is opened as a normal Safari/browser tab, the status pill shows **Install PWA for iOS notifications** and locked-screen notifications should not be expected. Apple documents that Home Screen web app notifications can appear on the Lock Screen, in Notification Center, and on Apple Watch after the user grants permission: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/
 
 A browser that signs in as a control device stays local until **Save Device** is used. It cannot create an entry in **Saved Devices** or become a request target just by opening the app or enabling notifications. A saved phone also appears once in its own Saved Devices list with a **Current device** label; the current phone cannot remove itself from that screen. Each device receives a stable `#xxxxxx` suffix, and saving that same device again updates its existing record rather than adding another one.
 
-The request form shows a status light above the sender picker. It turns green only when the selected saved sender has granted notification permission and has checked in during the previous two minutes. A yellow light means that sender is offline or notification permission is not ready, so the request can still be saved but a popup should not be expected yet.
+The request form shows a status light above the sender picker. It turns green when the selected saved sender has a Web Push subscription or, for local active-app notifications, has granted notification permission and checked in during the previous two minutes. A yellow light means the sender is offline, missing permission, or missing iOS Web Push setup, so the request can still be saved but a locked-device popup should not be expected yet.
 
 If the sender loses network access, the controller changes to the yellow offline state after the heartbeat expires. Once the sender reconnects, an active PWA checks in immediately on the browser reconnect event and also retries every six seconds; reopening the PWA resumes the same sync flow.
 
@@ -105,44 +117,48 @@ Cloud refreshes preserve text being entered in the Device form. Firebase receive
 
 To get a phone popup for a newly arrived message request:
 
-- Open the installed PWA on the Android sender phone.
+- Open the installed PWA on the sender phone. On iPhone, this must be the Home Screen web app, not a regular Safari tab.
 - Sign in with the same Firebase account as the controller.
 - Confirm the phone is saved as the sender device and note its `device #xxxxxx` suffix.
 - Tap **Enable Notifications** on the phone and accept the browser/OS prompt.
-- Tap **Test Notification**. A visible test notification must appear on that phone before request notifications can work.
+- Tap **Test / Sync Push**. A visible local test notification must appear, and locked iOS delivery additionally needs the sender picker to show **Web Push ready**.
 - On the controller device, create the request and select the sender option with the same phone `#xxxxxx` suffix.
 - Multiple controller devices can use the same account. They should all default to the most recently seen explicitly saved sender device.
 - A control device may enable notifications for its own test alerts, but it is not selectable as a sender unless its role is explicitly saved as **Sender** or **Both**.
 - Older device records marked **Both** by a previous release are shown as not saved and are excluded from the sender picker until that device saves its role again.
-- Keep the sender PWA open or recently active so it can sync Firebase and display the popup.
+- For local active-app notifications, keep the sender PWA open or recently active so it can sync Firebase and display the popup.
+- For locked iPhone delivery, deploy the Firebase Function, configure VAPID keys, open the Home Screen PWA, tap **Test / Sync Push**, and confirm the sender picker says **Web Push ready**.
 
 When another signed-in device creates a message request for that sender device:
 
 - the controller pushes the new request to Firebase immediately, with delayed autosave as a backup;
 - the sender PWA checks Firebase for new assigned pending requests;
-- the sender device shows one notification per new request when permission is granted;
+- if a saved target device has a Web Push subscription, the Firebase Function sends the notification even when the PWA is closed or the phone is locked;
+- otherwise, the sender device shows one local notification per new request when permission is granted and the PWA is active enough to sync;
 - the notification stores both the pending-request PWA URL and the requested channel handoff URL;
 - tapping the notification first tries to open the requested app route, such as WhatsApp through `wa.me`;
 - if Android or the browser blocks that direct route, the service worker falls back to the PWA pending request and the PWA attempts the same handoff.
 
-This static-hosting implementation works while the sender PWA is open or active enough for the browser to keep syncing. Closed-app, guaranteed delivery requires storing push subscriptions and sending Web Push/FCM notifications from a backend such as Firebase Cloud Functions.
+Without the Firebase Function and VAPID keys, this static-hosting implementation works only while the sender PWA is open or active enough for the browser to keep syncing. Closed-app and locked-phone delivery requires the Web Push backend.
 
 WhatsApp notification taps are the most reliable because the handoff uses an HTTPS `wa.me` link that Android can route into WhatsApp. Viber and SMS/iMessage use custom deep-link schemes, so some browsers may fall back to the PWA first; the matching button remains available on the pending request card.
 
 Phone test checklist:
 
-- Open the installed PWA on the Android sender phone, not only the desktop browser.
+- Open the installed PWA on the sender phone, not only the desktop browser.
+- On iPhone, add the site to the Home Screen and launch from that icon.
 - Sign in with the same Firebase account.
-- Save the Android phone as the sender device.
-- Note the Android phone's current device suffix, shown as `device #xxxxxx`.
-- Tap **Enable Notifications**, then tap **Test Notification**.
+- Save the phone as the sender device.
+- Note the phone's current device suffix, shown as `device #xxxxxx`.
+- Tap **Enable Notifications**, then tap **Test / Sync Push**.
 - If the test notification does not appear, check OS/browser notification settings for the installed PWA.
+- On iPhone, confirm the header does not say **Install PWA for iOS notifications**.
+- On iPhone locked-screen tests, confirm the selected sender says **Web Push ready** before locking the phone.
 - From the controller device, create a new request and choose the sender option with the same `#xxxxxx` suffix.
-- After a request notification appears, tap it. WhatsApp requests should route through the WhatsApp handoff; Viber or SMS requests may open the PWA fallback first depending on Android/browser support.
-- If a request appears in the pending list but no notification appears, confirm the request target is the real Android device record created by the Android phone itself. Choosing another saved device ID will not notify that phone.
-- If **Test Notification** works but request notifications do not, the target device ID is wrong or the Android PWA is not currently syncing.
+- After a request notification appears, tap it. WhatsApp requests should route through the WhatsApp handoff; Viber or SMS requests may open the PWA fallback first depending on OS/browser support.
+- If a request appears in the pending list but no notification appears, confirm the request target is the real phone device record created by the phone itself. Choosing another saved device ID will not notify that phone.
+- If **Test / Sync Push** works but request notifications do not, the target device ID is wrong, the active PWA is not syncing, or the Web Push function is not deployed/configured.
 - If old notifications still open only the PWA, clear them and create a new request so the notification has current handoff metadata.
-- If the phone never shows the test notification, open Android settings for the browser or installed PWA and allow notifications there, then return to the app and tap **Test Notification** again.
 
 Check local Firebase setup:
 
@@ -160,7 +176,15 @@ Deploy to Firebase Hosting and release Realtime Database rules:
 npm run deploy
 ```
 
-Every deploy increments the patch version before release. For example, `1.0.0` becomes `1.0.1`. The live PWA shows the deployed version in the header as `vX.Y.Z`, and the service worker cache name uses the same version so app updates are easier to confirm on phones.
+Deploy Hosting, Realtime Database rules, and the Web Push Cloud Function:
+
+```bash
+npm run deploy:all
+```
+
+Use `npm run deploy:functions` after changing only the Web Push function or its runtime configuration.
+
+The hosting deploy scripts increment the patch version before release. For example, `1.0.0` becomes `1.0.1`. The live PWA shows the deployed version in the header as `vX.Y.Z`, and the service worker cache name uses the same version so app updates are easier to confirm on phones.
 
 Production versioning starts at `v1.0.1`.
 
@@ -207,6 +231,9 @@ Current verification:
 - Browser-created requests push to Firebase immediately, with the existing delayed cloud save still available as backup.
 - Request notifications include the PWA fallback URL, request ID, channel, and channel handoff URL.
 - The service worker validates notification click targets, tries the channel handoff first, and falls back to the pending-request PWA URL.
+- iOS Safari/browser tab mode reports that Home Screen install is required instead of claiming lock-screen readiness.
+- Saved sender devices expose notification mode metadata such as `local notify` or `web push`.
+- The Web Push Cloud Function syntax check passes and sends request notifications to saved device subscriptions when VAPID keys are configured.
 - Firebase Hosting deploy `v1.0.18` contains explicit device saving, targeted Firebase updates, sender availability status, reconnect handling, notification click handoff, and a scrollable desktop request list that keeps the composer accessible.
 
 ## Project Structure
@@ -220,6 +247,7 @@ Current verification:
 |-- firebase.rules.json
 |-- package.json
 |-- tools/
+|-- functions/
 |-- icons/
 |-- src/
 |   |-- app.js
@@ -238,6 +266,7 @@ Supported behavior:
 - Prepare the recipient or message where the platform allows it.
 - Let the user review and manually send.
 - Show browser notifications for assigned requests while the sender PWA is open or active enough to sync.
+- Show Web Push notifications on locked subscribed devices when Firebase Functions and VAPID keys are configured.
 - Route notification taps toward the requested messaging app when Android/browser link handling allows it.
 
 Unsupported behavior:
@@ -247,7 +276,7 @@ Unsupported behavior:
 - Reading or controlling another app's UI.
 - Using push notifications to trigger automatic sending.
 - Reliably preselecting both recipient and message in personal Viber deep links.
-- Guaranteed closed-app request popups without a Web Push/FCM backend.
+- Guaranteed closed-app request popups without the Web Push/FCM backend deployed and configured.
 
 For true automated messaging, use official business APIs such as WhatsApp Business Cloud API, Viber Business Messages, or an SMS provider API.
 
@@ -255,7 +284,7 @@ For true automated messaging, use official business APIs such as WhatsApp Busine
 
 - Harden account and device management.
 - Add a backend message request API.
-- Add push subscription storage.
-- Send guaranteed Web Push/FCM notifications from the backend.
+- Add a visible Web Push delivery audit trail in the request detail UI.
+- Add expired-subscription recovery prompts on sender devices.
 - Add request status audit history.
 - Test on real Android and iOS Home Screen installs.
