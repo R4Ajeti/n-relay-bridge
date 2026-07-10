@@ -131,14 +131,16 @@
             <input id="channel" name="channel" type="hidden" value="sms">
             <div class="channel-options">
               <span class="channel-chip is-default">SMS/iMessage</span>
-              <label class="channel-option">
-                <input data-optional-channel name="optionalChannels" type="checkbox" value="whatsapp">
-                <span>WhatsApp</span>
-              </label>
-              <label class="channel-option">
-                <input data-optional-channel name="optionalChannels" type="checkbox" value="viber">
-                <span>Viber</span>
-              </label>
+              <div class="optional-channel-group" aria-label="Optional channels">
+                <label class="channel-option">
+                  <input data-optional-channel name="optionalChannels" type="checkbox" value="whatsapp">
+                  <span>WhatsApp</span>
+                </label>
+                <label class="channel-option">
+                  <input data-optional-channel name="optionalChannels" type="checkbox" value="viber">
+                  <span>Viber</span>
+                </label>
+              </div>
             </div>
           </fieldset>
           <div id="sender-availability" class="sender-availability is-unavailable" role="status" aria-live="polite">

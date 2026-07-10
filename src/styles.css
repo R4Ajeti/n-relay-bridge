@@ -192,11 +192,11 @@ h3 {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(360px, 0.82fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(0, 1.18fr) minmax(360px, 0.82fr);
   grid-template-areas:
-    "device pending"
-    "compose pending"
-    "sync pending";
+    "pending device"
+    "pending compose"
+    "pending sync";
   gap: 16px;
   align-items: start;
   max-width: 1500px;
@@ -271,13 +271,7 @@ h3 {
 .pending-panel {
   display: flex;
   grid-area: pending;
-  height: min(760px, calc(100vh - 132px));
-  min-height: 560px;
-  max-height: calc(100vh - 132px);
   flex-direction: column;
-  position: sticky;
-  top: 16px;
-  overflow: hidden;
 }
 
 .sync-panel {
@@ -358,6 +352,15 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
+}
+
+.optional-channel-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .channel-chip,
@@ -559,8 +562,6 @@ textarea:focus {
   flex: 1;
   min-height: 0;
   align-content: start;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 
 .list-stack {
@@ -694,18 +695,14 @@ textarea:focus {
   .app-shell {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "pending"
       "device"
       "compose"
-      "pending"
       "sync";
   }
 
   .pending-panel {
-    height: auto;
     min-height: 0;
-    max-height: none;
-    position: static;
-    overflow: visible;
   }
 }
 
@@ -725,6 +722,12 @@ textarea:focus {
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .optional-channel-group {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+    margin-left: 0;
   }
 
   .request-actions a,

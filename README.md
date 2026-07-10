@@ -219,7 +219,7 @@ Current verification:
 - `npm run check` passes JavaScript syntax checks for the app, service worker, and tooling.
 - The local app shell serves successfully at `http://127.0.0.1:4173/`.
 - The Device panel only lists explicitly saved devices; an unsaved control browser stays local.
-- The desktop workspace keeps Device, Control, and Sync on the left while Pending Requests owns the full right column.
+- The desktop workspace keeps Sender/Pending Requests on the left while Device, New Request, and Sync sit on the right; phone layouts show Sender first.
 - Hidden authenticated screens stay hidden while the sign-in screen is active.
 - New requests default to sender-capable devices and do not silently fall back to controllers.
 - Notification-enabled control devices keep their chosen control role; they do not create an extra sender target.
@@ -232,10 +232,12 @@ Current verification:
 - Request notifications include the PWA fallback URL, request ID, channel, and channel handoff URL.
 - The service worker validates notification click targets, tries the channel handoff first, and falls back to the pending-request PWA URL.
 - New requests default to SMS/iMessage, and pending cards only show WhatsApp or Viber buttons when those options were selected.
+- The request composer keeps SMS/iMessage first and groups optional WhatsApp and Viber controls to the right when space allows.
+- The pending sender request list grows with the page instead of using an internal scrollbar.
 - iOS Safari/browser tab mode reports that Home Screen install is required instead of claiming lock-screen readiness.
 - Saved sender devices expose notification mode metadata such as `local notify` or `web push`.
 - The Web Push Cloud Function syntax check passes and sends request notifications to saved device subscriptions when VAPID keys are configured.
-- Firebase Hosting deploy `v1.0.18` contains explicit device saving, targeted Firebase updates, sender availability status, reconnect handling, notification click handoff, and a scrollable desktop request list that keeps the composer accessible.
+- Firebase Hosting deploy `v1.0.18` contains explicit device saving, targeted Firebase updates, sender availability status, reconnect handling, and notification click handoff.
 
 ## Project Structure
 
