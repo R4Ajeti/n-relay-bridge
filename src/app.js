@@ -21,6 +21,15 @@ const CHANNEL_LABELS = {
   sms: "SMS/iMessage"
 };
 
+const CHANNEL_ACTION_LABELS = {
+  whatsapp: "WhatsApp",
+  viber: "Viber",
+  sms: "SMS"
+};
+
+const DEFAULT_CHANNEL = "sms";
+const CHANNEL_ORDER = ["sms", "whatsapp", "viber"];
+const OPTIONAL_CHANNELS = new Set(["whatsapp", "viber"]);
 const DEVICE_ROLES = new Set(["control", "sender", "both"]);
 const DEVICE_STALE_MS = 24 * 60 * 60 * 1000;
 const DEVICE_NOTIFICATION_READY_MS = 2 * 60 * 1000;
@@ -52,6 +61,7 @@ const selectors = {
   requestSubmitButton: document.querySelector("#request-form button[type='submit']"),
   recipient: document.querySelector("#recipient"),
   channel: document.querySelector("#channel"),
+  optionalChannels: document.querySelectorAll("[data-optional-channel]"),
   senderAvailability: document.querySelector("#sender-availability"),
   senderAvailabilityLabel: document.querySelector("#sender-availability-label"),
   targetDevice: document.querySelector("#target-device"),
@@ -149,6 +159,53 @@ function shortId(id) {
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function isSupportedChannel(value) {
+  return CHANNEL_ORDER.includes(value);
+}
+
+function getSelectedChannels() {
+  const channels = new Set([DEFAULT_CHANNEL]);
+
+  selectors.optionalChannels.forEach((input) => {
+    if (input.checked && OPTIONAL_CHANNELS.has(input.value)) {
+      channels.add(input.value);
+    }
+  });
+
+  return CHANNEL_ORDER.filter((channelName) => channels.has(channelName));
+}
+
+function getRequestChannels(request = {}) {
+  const rawChannels = Array.isArray(request.channels) ? request.channels : [request.channel];
+  const channels = new Set([DEFAULT_CHANNEL]);
+
+  rawChannels.forEach((channelName) => {
+    if (isSupportedChannel(channelName)) {
+      channels.add(channelName);
+    }
+  });
+
+  return CHANNEL_ORDER.filter((channelName) => channels.has(channelName));
+}
+
+function getPrimaryChannel(request = {}) {
+  const requestedChannel = isSupportedChannel(request.channel) ? request.channel : DEFAULT_CHANNEL;
+  const channels = getRequestChannels(request);
+
+  return channels.includes(requestedChannel) ? requestedChannel : DEFAULT_CHANNEL;
+}
+
+function requestStatusLabel(status) {
+  const visibleStatus = status === "sent_by_user" ? "opened" : status || "pending";
+  return visibleStatus.replaceAll("_", " ");
+}
+
+function resetOptionalChannels() {
+  selectors.optionalChannels.forEach((input) => {
+    input.checked = false;
+  });
 }
 
 function toast(message) {
@@ -435,13 +492,22 @@ function renderRequests() {
   selectors.requestList.innerHTML = visibleRequests.map((request) => {
     const target = state.devices.find((device) => device.id === request.targetDeviceId);
     const links = buildLinks(request);
+    const channels = getRequestChannels(request);
+    const channelTags = channels
+      .map((channelName) => `<span class="tag ready">${escapeHtml(CHANNEL_LABELS[channelName])}</span>`)
+      .join("");
+    const actionLinks = channels
+      .map((channelName) => (
+        `<a href="${escapeHtml(links[channelName])}" data-open-request="${escapeHtml(request.id)}" data-channel="${channelName}">${escapeHtml(CHANNEL_ACTION_LABELS[channelName])}</a>`
+      ))
+      .join("");
 
     return `
-      <article class="request-card ${request.status === "sent_by_user" ? "done" : ""}" data-request-card="${escapeHtml(request.id)}">
+      <article class="request-card" data-request-card="${escapeHtml(request.id)}">
         <div>
           <div class="request-meta">
-            <span class="tag ready">${escapeHtml(CHANNEL_LABELS[request.channel])}</span>
-            <span class="tag">${escapeHtml(request.status.replaceAll("_", " "))}</span>
+            ${channelTags}
+            <span class="tag">${escapeHtml(requestStatusLabel(request.status))}</span>
             <span class="tag">${escapeHtml(target ? `${target.name} #${shortId(target.id)}` : "Unknown device")}</span>
           </div>
           <h3>${escapeHtml(request.recipient)}</h3>
@@ -449,10 +515,7 @@ function renderRequests() {
         </div>
         <div class="request-actions">
           <button class="secondary-action" type="button" data-copy-message="${request.id}">Copy</button>
-          <a href="${links.whatsapp}" data-open-request="${request.id}" data-channel="whatsapp">WhatsApp</a>
-          <a href="${links.viber}" data-open-request="${request.id}" data-channel="viber">Viber</a>
-          <a href="${links.sms}" data-open-request="${request.id}" data-channel="sms">SMS</a>
-          <button class="secondary-action" type="button" data-mark-sent="${request.id}">Sent</button>
+          ${actionLinks}
           <button class="danger-action" type="button" data-cancel-request="${request.id}">Cancel</button>
         </div>
       </article>
@@ -802,12 +865,14 @@ async function handleRequestSubmit(event) {
     return;
   }
 
+  const channels = getSelectedChannels();
   const request = {
     id: uid("request"),
     userId: state.profile.accountId,
     createdByDeviceId: state.profile.deviceId,
     targetDeviceId: selectors.targetDevice.value || state.profile.deviceId,
-    channel: selectors.channel.value,
+    channel: DEFAULT_CHANNEL,
+    channels,
     recipient: text(selectors.recipient.value),
     message: text(selectors.message.value),
     status: "pending",
@@ -819,7 +884,8 @@ async function handleRequestSubmit(event) {
   firebaseRuntime.dirtyRequestIds.add(request.id);
   targetDeviceManuallySelected = false;
   selectors.requestForm.reset();
-  selectors.channel.value = request.channel;
+  selectors.channel.value = DEFAULT_CHANNEL;
+  resetOptionalChannels();
   save();
   render();
   toast("Request created");
@@ -854,19 +920,12 @@ async function handleRequestListClick(event) {
   }
 
   const copyId = event.target.closest("[data-copy-message]")?.dataset.copyMessage;
-  const sentId = event.target.closest("[data-mark-sent]")?.dataset.markSent;
   const cancelId = event.target.closest("[data-cancel-request]")?.dataset.cancelRequest;
   const openElement = event.target.closest("[data-open-request]");
 
   if (copyId) {
     const request = state.requests.find((item) => item.id === copyId);
     if (request) await copyText(request.message, "Message copied");
-    return;
-  }
-
-  if (sentId) {
-    updateRequestStatus(sentId, "sent_by_user");
-    toast("Marked sent");
     return;
   }
 
@@ -885,22 +944,23 @@ async function handleRequestListClick(event) {
   }
 }
 
-async function openExternalRequest(request, channelName = request.channel, options = {}) {
+async function openExternalRequest(request, channelName = getPrimaryChannel(request), options = {}) {
   const { copySms = true } = options;
   const links = buildLinks(request);
-  const targetUrl = links[channelName];
+  const selectedChannel = isSupportedChannel(channelName) ? channelName : "";
+  const targetUrl = links[selectedChannel];
 
   if (!targetUrl) {
     toast("Unsupported channel");
     return;
   }
 
-  if (channelName === "sms" && copySms) {
+  if (selectedChannel === DEFAULT_CHANNEL && copySms) {
     await copyText(request.message, "Message copied for SMS");
   }
 
   updateRequestStatus(request.id, "opened");
-  toast(`Opening ${CHANNEL_LABELS[channelName] || "message app"}`);
+  toast(`Opening ${CHANNEL_LABELS[selectedChannel] || "message app"}`);
 
   window.setTimeout(() => {
     window.location.href = targetUrl;
@@ -1213,18 +1273,19 @@ async function showRequestNotification(request) {
   if (!registration) return false;
 
   const links = buildLinks(request);
+  const channelName = getPrimaryChannel(request);
   const appUrl = `/?view=pending&request=${encodeURIComponent(request.id)}&handoff=1`;
-  const handoffUrl = links[request.channel] || "";
+  const handoffUrl = links[channelName] || "";
   const notificationOptions = buildNotificationOptions({
-    body: `${CHANNEL_LABELS[request.channel]} / ${request.recipient}`,
+    body: `${CHANNEL_LABELS[channelName]} / ${request.recipient}`,
     appUrl,
     handoffUrl,
     tag: `n-smart-request-${request.id}`,
     requestId: request.id,
-    channel: request.channel
+    channel: channelName
   });
 
-  await showNotificationViaWorker(registration, `${CHANNEL_LABELS[request.channel]} message request`, notificationOptions);
+  await showNotificationViaWorker(registration, `${CHANNEL_LABELS[channelName]} message request`, notificationOptions);
 
   return true;
 }
@@ -1688,7 +1749,7 @@ async function attemptNotificationHandoff(requestId) {
   }
 
   clearHandoffParam();
-  await openExternalRequest(request, request.channel, { copySms: false });
+  await openExternalRequest(request, getPrimaryChannel(request), { copySms: false });
 }
 
 function clearHandoffParam() {

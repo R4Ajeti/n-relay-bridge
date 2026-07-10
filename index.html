@@ -126,14 +126,21 @@
             Recipient
             <input id="recipient" name="recipient" inputmode="tel" autocomplete="tel" placeholder="+15551234567" required>
           </label>
-          <label>
-            Channel
-            <select id="channel" name="channel">
-              <option value="whatsapp">WhatsApp</option>
-              <option value="viber">Viber</option>
-              <option value="sms">SMS/iMessage</option>
-            </select>
-          </label>
+          <fieldset class="channel-picker">
+            <legend>Channels</legend>
+            <input id="channel" name="channel" type="hidden" value="sms">
+            <div class="channel-options">
+              <span class="channel-chip is-default">SMS/iMessage</span>
+              <label class="channel-option">
+                <input data-optional-channel name="optionalChannels" type="checkbox" value="whatsapp">
+                <span>WhatsApp</span>
+              </label>
+              <label class="channel-option">
+                <input data-optional-channel name="optionalChannels" type="checkbox" value="viber">
+                <span>Viber</span>
+              </label>
+            </div>
+          </fieldset>
           <div id="sender-availability" class="sender-availability is-unavailable" role="status" aria-live="polite">
             <span class="availability-bulb" aria-hidden="true"></span>
             <span id="sender-availability-label">No saved sender device</span>

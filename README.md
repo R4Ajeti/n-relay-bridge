@@ -2,7 +2,7 @@
 
 # n-relay-bridge
 
-A lightweight PWA for saving your signed-in devices and opening WhatsApp, Viber, or SMS/iMessage for user-confirmed sending.
+A lightweight PWA for saving your signed-in devices and opening SMS/iMessage by default, with optional WhatsApp or Viber handoff for user-confirmed sending.
 
 ![PWA](https://img.shields.io/badge/PWA-ready-125b50)
 ![Status](https://img.shields.io/badge/status-MVP-2457a6)
@@ -24,7 +24,7 @@ Current flow:
 - Control devices default new requests to the most recently seen sender device that was explicitly saved as **Sender** or **Both**.
 - Enabling notifications never changes a control device into a sender device.
 - The sender device can enable browser notifications after login.
-- The sender opens WhatsApp, Viber, or SMS/iMessage with the message prepared where supported.
+- The sender opens SMS/iMessage by default, with WhatsApp or Viber available only when the request includes them.
 - The user manually taps Send inside the external app.
 
 This project is intentionally built around transparent, user-confirmed handoff. It does not try to automate third-party apps in the background.
@@ -34,7 +34,7 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Installable PWA shell with web app manifest.
 - Service worker with offline fallback.
 - Local device profile and an explicit saved-device list.
-- Message request composer.
+- SMS-first message request composer with optional WhatsApp and Viber add-ons.
 - Sender-first request targeting for multi-controller accounts.
 - Explicit sender-device roles, separate from notification permission.
 - Stable device IDs with a visible `#xxxxxx` suffix; saving the same device updates its existing record.
@@ -135,13 +135,13 @@ When another signed-in device creates a message request for that sender device:
 - the sender PWA checks Firebase for new assigned pending requests;
 - if a saved target device has a Web Push subscription, the Firebase Function sends the notification even when the PWA is closed or the phone is locked;
 - otherwise, the sender device shows one local notification per new request when permission is granted and the PWA is active enough to sync;
-- the notification stores both the pending-request PWA URL and the requested channel handoff URL;
-- tapping the notification first tries to open the requested app route, such as WhatsApp through `wa.me`;
+- the notification stores both the pending-request PWA URL and the primary channel handoff URL;
+- tapping the notification first tries to open the primary app route;
 - if Android or the browser blocks that direct route, the service worker falls back to the PWA pending request and the PWA attempts the same handoff.
 
 Without the Firebase Function and VAPID keys, this static-hosting implementation works only while the sender PWA is open or active enough for the browser to keep syncing. Closed-app and locked-phone delivery requires the Web Push backend.
 
-WhatsApp notification taps are the most reliable because the handoff uses an HTTPS `wa.me` link that Android can route into WhatsApp. Viber and SMS/iMessage use custom deep-link schemes, so some browsers may fall back to the PWA first; the matching button remains available on the pending request card.
+New requests use SMS/iMessage as the primary handoff. WhatsApp and Viber buttons appear on a pending request only when the controller added those options. Viber and SMS/iMessage use custom deep-link schemes, so some browsers may fall back to the PWA first; matching buttons remain available on the pending request card. WhatsApp uses an HTTPS `wa.me` link that Android can often route into WhatsApp when that option is enabled.
 
 Phone test checklist:
 
@@ -155,7 +155,7 @@ Phone test checklist:
 - On iPhone, confirm the header does not say **Install PWA for iOS notifications**.
 - On iPhone locked-screen tests, confirm the selected sender says **Web Push ready** before locking the phone.
 - From the controller device, create a new request and choose the sender option with the same `#xxxxxx` suffix.
-- After a request notification appears, tap it. WhatsApp requests should route through the WhatsApp handoff; Viber or SMS requests may open the PWA fallback first depending on OS/browser support.
+- After a request notification appears, tap it. New SMS-first requests may open the PWA fallback first depending on OS/browser support; optional WhatsApp or Viber buttons remain on the pending request card when selected.
 - If a request appears in the pending list but no notification appears, confirm the request target is the real phone device record created by the phone itself. Choosing another saved device ID will not notify that phone.
 - If **Test / Sync Push** works but request notifications do not, the target device ID is wrong, the active PWA is not syncing, or the Web Push function is not deployed/configured.
 - If old notifications still open only the PWA, clear them and create a new request so the notification has current handoff metadata.
@@ -231,6 +231,7 @@ Current verification:
 - Browser-created requests push to Firebase immediately, with the existing delayed cloud save still available as backup.
 - Request notifications include the PWA fallback URL, request ID, channel, and channel handoff URL.
 - The service worker validates notification click targets, tries the channel handoff first, and falls back to the pending-request PWA URL.
+- New requests default to SMS/iMessage, and pending cards only show WhatsApp or Viber buttons when those options were selected.
 - iOS Safari/browser tab mode reports that Home Screen install is required instead of claiming lock-screen readiness.
 - Saved sender devices expose notification mode metadata such as `local notify` or `web push`.
 - The Web Push Cloud Function syntax check passes and sends request notifications to saved device subscriptions when VAPID keys are configured.
@@ -267,7 +268,7 @@ Supported behavior:
 - Let the user review and manually send.
 - Show browser notifications for assigned requests while the sender PWA is open or active enough to sync.
 - Show Web Push notifications on locked subscribed devices when Firebase Functions and VAPID keys are configured.
-- Route notification taps toward the requested messaging app when Android/browser link handling allows it.
+- Route notification taps toward the primary messaging app when Android/browser link handling allows it.
 
 Unsupported behavior:
 

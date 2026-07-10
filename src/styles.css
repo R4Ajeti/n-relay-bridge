@@ -338,6 +338,60 @@ h3 {
   box-shadow: 0 0 0 3px rgb(18 91 80 / 14%);
 }
 
+.channel-picker {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.channel-picker legend {
+  margin-bottom: 6px;
+  color: var(--muted);
+  padding: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.channel-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.channel-chip,
+.channel-option {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  border-radius: 7px;
+  padding: 9px 12px;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.channel-chip.is-default {
+  border: 1px solid #b4c8ec;
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.channel-option {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+}
+
+.channel-option input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .auth-form {
   display: grid;
   gap: 12px;
@@ -550,10 +604,6 @@ textarea:focus {
   display: grid;
   gap: 12px;
   padding: 15px;
-}
-
-.request-card.done {
-  background: #f7faf9;
 }
 
 .request-meta {

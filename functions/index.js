@@ -12,6 +12,9 @@ const CHANNEL_LABELS = {
   sms: "SMS/iMessage"
 };
 
+const DEFAULT_CHANNEL = "sms";
+const CHANNEL_NAMES = new Set(Object.keys(CHANNEL_LABELS));
+
 exports.sendRequestWebPush = onValueCreated("users/{uid}/messageRequests/{requestId}", async (event) => {
   const request = event.data.val();
   const { uid, requestId } = event.params;
@@ -43,14 +46,15 @@ exports.sendRequestWebPush = onValueCreated("users/{uid}/messageRequests/{reques
   webPush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
   const links = buildLinks(request, device);
-  const channelLabel = CHANNEL_LABELS[request.channel] || "Message";
+  const channel = CHANNEL_NAMES.has(request.channel) ? request.channel : DEFAULT_CHANNEL;
+  const channelLabel = CHANNEL_LABELS[channel];
   const payload = {
     title: `${channelLabel} message request`,
     body: `${channelLabel} / ${request.recipient || "recipient"}`,
     appUrl: `/?view=pending&request=${encodeURIComponent(requestId)}&handoff=1`,
-    handoffUrl: links[request.channel] || "",
+    handoffUrl: links[channel] || "",
     requestId,
-    channel: request.channel || "",
+    channel,
     tag: `n-smart-request-${requestId}`
   };
 
