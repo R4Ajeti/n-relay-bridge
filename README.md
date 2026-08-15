@@ -19,6 +19,8 @@ The idea is simple: prepare a message on one device, open it on another device, 
 Current flow:
 
 - Users must register or sign in before using device and message actions.
+- Signed-in users land on a focused home that shows only the newest non-cancelled message request with one send handoff.
+- The full workspace remains available from a button at the bottom of the focused home after a substantial scroll.
 - Multiple devices can work as control devices.
 - A sender device receives assigned message requests.
 - Control devices default new requests to the most recently seen sender device that was explicitly saved as **Sender** or **Both**.
@@ -39,6 +41,8 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Explicit sender-device roles, separate from notification permission.
 - Stable device IDs with a visible `#xxxxxx` suffix; saving the same device updates its existing record.
 - Pending request list for the sender device.
+- Focused latest-message home with a large single-action message card and a `No messages` empty state.
+- Full workspace navigation that preserves the existing device, composer, pending-list, and sync tools.
 - Firebase email/password login.
 - Realtime Database sync for saved devices and message requests.
 - Sender-side local notifications for new assigned requests while the PWA is active.
@@ -218,6 +222,9 @@ Current verification:
 
 - `npm run check` passes JavaScript syntax checks for the app, service worker, and tooling.
 - The local app shell serves successfully at `http://127.0.0.1:4173/`.
+- The default authenticated route shows the latest-message home before the full workspace.
+- The latest-message home shows the newest non-cancelled request with one primary-channel handoff, or `No messages` when empty.
+- The full-workspace control sits below the initial viewport, opens the existing workspace, and browser Back restores the focused home.
 - The Device panel only lists explicitly saved devices; an unsaved control browser stays local.
 - The desktop workspace keeps Sender/Pending Requests on the left while Device, New Request, and Sync sit on the right; phone layouts show Sender first.
 - Hidden authenticated screens stay hidden while the sign-in screen is active.
@@ -280,11 +287,13 @@ Unsupported behavior:
 - Using push notifications to trigger automatic sending.
 - Reliably preselecting both recipient and message in personal Viber deep links.
 - Guaranteed closed-app request popups without the Web Push/FCM backend deployed and configured.
+- Silent sending from the focused home; its send button still opens the external messaging app for user confirmation.
 
 For true automated messaging, use official business APIs such as WhatsApp Business Cloud API, Viber Business Messages, or an SMS provider API.
 
 ## Roadmap
 
+- Add an explicit unread/read timeline so the focused home can distinguish the newest request from the newest unseen request.
 - Harden account and device management.
 - Add a backend message request API.
 - Add a visible Web Push delivery audit trail in the request detail UI.

@@ -14,7 +14,7 @@
     <link rel="stylesheet" href="/src/styles.css?v=__APP_VERSION__">
   </head>
   <body>
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a id="skip-link" class="skip-link" href="#focused-home">Skip to content</a>
 
     <header class="app-header">
       <div class="brand-mark" aria-hidden="true">
@@ -60,6 +60,23 @@
         <p id="auth-meta">Firebase config not loaded.</p>
       </div>
     </section>
+
+    <main id="focused-home" class="focused-home" hidden>
+      <section class="panel latest-panel" aria-labelledby="latest-title">
+        <div class="latest-panel-header">
+          <div>
+            <p class="eyebrow">Sender</p>
+            <h2 id="latest-title">Latest Message</h2>
+          </div>
+        </div>
+        <div id="latest-request" class="latest-request" aria-live="polite"></div>
+      </section>
+
+      <div class="workspace-reveal">
+        <p>Need device settings, a new request, or the full message list?</p>
+        <a id="open-workspace" class="primary-action workspace-link" href="?view=workspace">Open Full Workspace</a>
+      </div>
+    </main>
 
     <main id="main" class="app-shell app-workspace" hidden>
       <section class="panel device-panel" aria-labelledby="device-title">

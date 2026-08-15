@@ -37,6 +37,7 @@ const WEB_PUSH_MODE = "web-push";
 const LOCAL_NOTIFICATION_MODE = "local";
 
 const selectors = {
+  skipLink: document.querySelector("#skip-link"),
   appVersion: document.querySelector("#app-version"),
   swStatus: document.querySelector("#sw-status"),
   notificationStatus: document.querySelector("#notification-status"),
@@ -66,6 +67,9 @@ const selectors = {
   senderAvailabilityLabel: document.querySelector("#sender-availability-label"),
   targetDevice: document.querySelector("#target-device"),
   message: document.querySelector("#message"),
+  focusedHome: document.querySelector("#focused-home"),
+  latestRequest: document.querySelector("#latest-request"),
+  openWorkspace: document.querySelector("#open-workspace"),
   requestList: document.querySelector("#request-list"),
   clearCompleted: document.querySelector("#clear-completed"),
   exportButton: document.querySelector("#export-button"),
@@ -105,6 +109,7 @@ const firebaseRuntime = {
 
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("nsp-sync") : null;
 const launchParams = new URLSearchParams(window.location.search);
+let currentView = resolveView(launchParams);
 const launchIntent = {
   view: launchParams.get("view"),
   requestId: launchParams.get("request"),
@@ -112,6 +117,12 @@ const launchIntent = {
   focused: false,
   handoffStarted: false
 };
+
+function resolveView(params = new URLSearchParams(window.location.search)) {
+  return params.get("view") === "workspace" || params.get("action") === "new-request"
+    ? "workspace"
+    : "home";
+}
 
 function load(key, fallback) {
   try {
@@ -302,6 +313,7 @@ function render() {
   renderDevices();
   renderTargetOptions();
   renderSenderAvailability();
+  renderLatestRequest();
   renderRequests();
   renderAccess();
   updateNotificationStatus();
@@ -361,6 +373,8 @@ function renderAuth() {
 
 function renderAccess() {
   const signedIn = isSignedIn();
+  const showHome = signedIn && currentView === "home";
+  const showWorkspace = signedIn && currentView === "workspace";
   const hasSenderTarget = getSenderTargetDevices().length > 0;
   const gatedControls = [
     ...selectors.profileForm.elements,
@@ -372,12 +386,16 @@ function renderAccess() {
     selectors.copyPayload,
     selectors.importButton,
     ...selectors.deviceList.querySelectorAll("button"),
-    ...selectors.requestList.querySelectorAll("button, a")
+    ...selectors.requestList.querySelectorAll("button, a"),
+    ...selectors.latestRequest.querySelectorAll("button, a")
   ].filter(Boolean);
 
   selectors.appShell.classList.toggle("is-locked", !signedIn);
-  selectors.appShell.classList.toggle("is-hidden", !signedIn);
-  selectors.appShell.hidden = !signedIn;
+  selectors.appShell.classList.toggle("is-hidden", !showWorkspace);
+  selectors.appShell.hidden = !showWorkspace;
+  selectors.focusedHome.classList.toggle("is-hidden", !showHome);
+  selectors.focusedHome.hidden = !showHome;
+  selectors.skipLink.href = !signedIn ? "#auth-screen" : showWorkspace ? "#main" : "#focused-home";
   selectors.authScreen.classList.toggle("is-hidden", signedIn);
   selectors.authScreen.hidden = signedIn;
   selectors.gatedPanels.forEach((panel) => panel.setAttribute("aria-disabled", String(!signedIn)));
@@ -394,6 +412,39 @@ function renderAccess() {
 
   selectors.targetDevice.disabled = !signedIn || !hasSenderTarget;
   selectors.requestSubmitButton.disabled = !signedIn || !hasSenderTarget;
+}
+
+function renderLatestRequest() {
+  const latestRequest = [...state.requests]
+    .filter((request) => request.status !== "cancelled")
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))[0];
+
+  if (!latestRequest) {
+    selectors.latestRequest.innerHTML = `
+      <div class="latest-empty-state">
+        <strong>No messages</strong>
+        <p>Your latest message will appear here when one arrives.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const channelName = getPrimaryChannel(latestRequest);
+  const links = buildLinks(latestRequest);
+
+  selectors.latestRequest.innerHTML = `
+    <article class="latest-message-card" data-request-card="${escapeHtml(latestRequest.id)}">
+      <span class="tag ready latest-channel">${escapeHtml(CHANNEL_LABELS[channelName])}</span>
+      <h3>${escapeHtml(latestRequest.recipient)}</h3>
+      <p class="latest-message-copy">${escapeHtml(latestRequest.message)}</p>
+      <a
+        class="latest-send-action"
+        href="${escapeHtml(links[channelName])}"
+        data-open-request="${escapeHtml(latestRequest.id)}"
+        data-channel="${channelName}"
+      >Send ${escapeHtml(CHANNEL_ACTION_LABELS[channelName])}</a>
+    </article>
+  `;
 }
 
 function renderDevices() {
@@ -840,6 +891,8 @@ async function handleAuthSubmit(event) {
 
 function handleSignOut() {
   clearSession();
+  currentView = "home";
+  replaceViewUrl("home");
   render();
   toast("Signed out");
 }
@@ -1652,6 +1705,11 @@ function bindEvents() {
   selectors.requestForm.addEventListener("submit", handleRequestSubmit);
   selectors.deviceList.addEventListener("click", handleDeviceListClick);
   selectors.requestList.addEventListener("click", handleRequestListClick);
+  selectors.latestRequest.addEventListener("click", handleRequestListClick);
+  selectors.openWorkspace.addEventListener("click", (event) => {
+    event.preventDefault();
+    navigateToView("workspace");
+  });
   selectors.notifyButton.addEventListener("click", enableNotifications);
   selectors.clearCompleted.addEventListener("click", clearCompleted);
 
@@ -1720,6 +1778,45 @@ function bindEvents() {
       console.warn(error);
     });
   });
+
+  window.addEventListener("popstate", () => {
+    currentView = resolveView();
+    renderAccess();
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
+function navigateToView(view) {
+  currentView = view === "workspace" ? "workspace" : "home";
+  const url = new URL(window.location.href);
+
+  if (currentView === "workspace") {
+    url.searchParams.set("view", "workspace");
+  } else {
+    url.searchParams.delete("view");
+  }
+
+  url.searchParams.delete("action");
+  url.searchParams.delete("request");
+  url.searchParams.delete("handoff");
+  window.history.pushState({ view: currentView }, "", url);
+  renderAccess();
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+
+function replaceViewUrl(view) {
+  if (!("history" in window)) return;
+
+  const url = new URL(window.location.href);
+  if (view === "workspace") {
+    url.searchParams.set("view", "workspace");
+  } else {
+    url.searchParams.delete("view");
+  }
+  url.searchParams.delete("action");
+  url.searchParams.delete("request");
+  url.searchParams.delete("handoff");
+  window.history.replaceState({ view }, "", url);
 }
 
 function isSignedIn() {
@@ -1764,12 +1861,13 @@ function clearHandoffParam() {
 function focusRequestedView() {
   if (!isSignedIn()) return;
 
+  const visibleRoot = currentView === "workspace" ? selectors.appShell : selectors.focusedHome;
   const requestCard = launchIntent.requestId
-    ? [...document.querySelectorAll("[data-request-card]")].find((card) => card.dataset.requestCard === launchIntent.requestId)
+    ? [...visibleRoot.querySelectorAll("[data-request-card]")].find((card) => card.dataset.requestCard === launchIntent.requestId)
     : null;
   const target = requestCard
     || (launchIntent.view === "pending"
-      ? document.querySelector("#pending-title")
+      ? (currentView === "workspace" ? document.querySelector("#pending-title") : document.querySelector("#latest-title"))
       : launchParams.get("action") === "new-request"
         ? document.querySelector("#compose-title")
         : null);
