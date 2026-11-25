@@ -395,6 +395,7 @@ function renderAccess() {
   selectors.appShell.hidden = !showWorkspace;
   selectors.focusedHome.classList.toggle("is-hidden", !showHome);
   selectors.focusedHome.hidden = !showHome;
+  document.body.classList.toggle("is-focused-home", showHome);
   selectors.skipLink.href = !signedIn ? "#auth-screen" : showWorkspace ? "#main" : "#focused-home";
   selectors.authScreen.classList.toggle("is-hidden", signedIn);
   selectors.authScreen.hidden = signedIn;
@@ -434,15 +435,17 @@ function renderLatestRequest() {
 
   selectors.latestRequest.innerHTML = `
     <article class="latest-message-card" data-request-card="${escapeHtml(latestRequest.id)}">
-      <span class="tag ready latest-channel">${escapeHtml(CHANNEL_LABELS[channelName])}</span>
-      <h3>${escapeHtml(latestRequest.recipient)}</h3>
-      <p class="latest-message-copy">${escapeHtml(latestRequest.message)}</p>
       <a
         class="latest-send-action"
         href="${escapeHtml(links[channelName])}"
         data-open-request="${escapeHtml(latestRequest.id)}"
         data-channel="${channelName}"
       >Send ${escapeHtml(CHANNEL_ACTION_LABELS[channelName])}</a>
+      <div class="latest-message-details">
+        <span class="tag ready latest-channel">${escapeHtml(CHANNEL_LABELS[channelName])}</span>
+        <h3>${escapeHtml(latestRequest.recipient)}</h3>
+        <p class="latest-message-copy">${escapeHtml(latestRequest.message)}</p>
+      </div>
     </article>
   `;
 }
@@ -1867,7 +1870,7 @@ function focusRequestedView() {
     : null;
   const target = requestCard
     || (launchIntent.view === "pending"
-      ? (currentView === "workspace" ? document.querySelector("#pending-title") : document.querySelector("#latest-title"))
+      ? (currentView === "workspace" ? document.querySelector("#pending-title") : selectors.latestRequest)
       : launchParams.get("action") === "new-request"
         ? document.querySelector("#compose-title")
         : null);

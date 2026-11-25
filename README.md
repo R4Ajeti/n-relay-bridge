@@ -42,6 +42,7 @@ This project is intentionally built around transparent, user-confirmed handoff. 
 - Stable device IDs with a visible `#xxxxxx` suffix; saving the same device updates its existing record.
 - Pending request list for the sender device.
 - Focused latest-message home with a large single-action message card and a `No messages` empty state.
+- Focused-home chrome keeps attention on sending by hiding workspace status controls, placing the large centered send action first, and reducing supporting message details.
 - Full workspace navigation that preserves the existing device, composer, pending-list, and sync tools.
 - Firebase email/password login.
 - Realtime Database sync for saved devices and message requests.
@@ -224,6 +225,7 @@ Current verification:
 - The local app shell serves successfully at `http://127.0.0.1:4173/`.
 - The default authenticated route shows the latest-message home before the full workspace.
 - The latest-message home shows the newest non-cancelled request with one primary-channel handoff, or `No messages` when empty.
+- The focused home hides status/sign-out and title blocks, centers the enlarged send action above smaller message details, and keeps those controls unchanged in the full workspace.
 - The full-workspace control sits below the initial viewport, opens the existing workspace, and browser Back restores the focused home.
 - The Device panel only lists explicitly saved devices; an unsaved control browser stays local.
 - The desktop workspace keeps Sender/Pending Requests on the left while Device, New Request, and Sync sit on the right; phone layouts show Sender first.
